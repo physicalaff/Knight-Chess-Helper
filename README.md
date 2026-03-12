@@ -1,5 +1,7 @@
 # Knight — Chess Helper
 
+![Uploading Knight-Banner.png…]()
+
 Chrome extension that plays chess on chess.com like a human. Auto-plays moves, shows best move hints, and mimics real human behavior to avoid detection.
 
 ---
