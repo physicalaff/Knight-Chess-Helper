@@ -61,10 +61,6 @@ Knight is a Chrome extension designed to assist your chess games entirely locall
 
 ---
 
-![Knight Banner](Knight-Banner.png)
-
----
-
 ## 🚀 Key Features
 
 * 🤖 **Auto-Play** — Automatically execute moves on your behalf with natural, randomized human delay and organic mouse paths.
