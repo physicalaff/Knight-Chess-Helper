@@ -1,50 +1,118 @@
-# Knight — Chess Helper
+<img width="1024" height="1024" alt="Knight" src="https://github.com/user-attachments/assets/e255d1fa-0f43-4916-b27f-c23167f97d2d" />
+Knight — Chess Helper v4.1.0
 
-![Uploading Knight-Banner.png…]()
+🛡️ **An advanced, highly polished, and human-like chess assistant for Chess.com.** 
 
-Chrome extension that plays chess on chess.com like a human. Auto-plays moves, shows best move hints, and mimics real human behavior to avoid detection.
-
----
-
-## Features
-
-- Auto-play — engine plays moves automatically on your behalf
-- Best move hint — shows the best move with an animated arrow on the board
-- Opening book — first moves played from Lichess Masters database
-- Adjustable ELO — set strength from 1000 to 1500 with a slider
-- Human-like mouse movement — Bezier curves, fake hesitations, wrong piece hovers
-- Adaptive think time — fast in obvious positions, slow in sharp tactical ones
-- Recapture reflex — instant response after opponent captures
-- Time pressure mode — detects your clock and speeds up automatically
-- Background analysis — engine thinks while opponent is moving
-- Move log — tracks every played move with game phase indicator
-- Draggable floating UI — lives anywhere on screen, out of your way
+Knight is a Chrome extension designed to assist your chess games entirely locally. Powered by WebAssembly (WASM) and Chrome's Offscreen Document API, it analyzes positions offline, predicts human thinking times, simulates natural mouse trajectories, and offers a premium futuristic dashboard interface.
 
 ---
 
-## Installation
-
-1. Download or clone this repository
-2. Go to chrome://extensions
-3. Enable Developer mode
-4. Click Load unpacked
-5. Select the project folder
+![Knight Banner](Knight-Banner.png)
 
 ---
 
-## How it works
+## 🚀 Key Features
 
-Reads the board from the DOM, builds a FEN string, sends it to Stockfish for analysis. Opening moves come from the Lichess Masters database. All moves are executed through simulated pointer events with curved mouse paths and randomized timing so it looks like a real person playing.
-
-| ELO  | Depth | Mistakes | Blunders |
-|------|-------|----------|----------|
-| 1000 | 3     | 30%      | 8%       |
-| 1200 | 5     | 19%      | 5%       |
-| 1300 | 5     | 18%      | 4%       |
-| 1500 | 8     | 8%       | 2%       |
+* 🤖 **Auto-Play** — Automatically execute moves on your behalf with natural, randomized human delay and organic mouse paths.
+* 🧠 **100% Local Engine** — Powered by a local **Stockfish 18 (WebAssembly)** engine. It performs all calculations inside an isolated `Offscreen Document` without making third-party server calls, bypassing Chess.com's strict Content Security Policy (CSP).
+* ⚡ **Smart Think Time & Predictability** — The engine dynamically adapts its thinking time:
+  * **Obvious Moves (Near-Instant):** Direct recaptures on the same square or forced mates-in-1 are executed in **110–310ms** to replicate instant human reflexes.
+  * **Complex Positions (Deliberate Choice):** Close games with active tactical threats prompt the engine to think **1.8x – 2.1x** longer, simulating a player deep in thought.
+* 🎯 **Dynamic ELO Calibration (1000–1500)** — A real, mathematically scaled difficulty system that changes search depth, blunder rates, and physical mouse movements.
+* ⬡ **Instant Board Hints** — Draws the best move dynamically on the chessboard using animated dashes and arrows. **Zero cooldown**—hints update instantly on click.
+* 📖 **Opening Book** — Automatically plays the first 14 half-moves naturally using Lichess Masters Database to look indistinguishable from a human player.
+* 🌌 **Obsidian Glass UI** — A premium dark-cyber dashboard featuring compact real-time game statistics (clocks, evaluations, moves log) and a pulsing floating neon indicator.
 
 ---
 
-## Disclaimer
+## 📊 ELO Scaling Matrix
 
-For educational purposes only. Using cheats on chess.com violates their Terms of Service and may result in a permanent ban. Use at your own risk.
+The ELO slider isn't just cosmetic; it dynamically adjusts the following core engine parameters in real-time:
+
+| ELO Level | Category | Depth | Mistake Chance | Blunder Chance | Average Thinking Time | Mouse Wobble |
+| :---: | :--- | :---: | :---: | :---: | :---: | :---: |
+| **1000** | Beginner | 3 plies | 30% | 8% | ~300ms – 2.0s | Heavy (5px) |
+| **1100** | Casual | 4 plies | 25% | 6.5% | ~400ms – 2.4s | Moderate (4.3px) |
+| **1200** | Intermediate | 5 plies | 21% | 5.2% | ~450ms – 2.7s | Moderate (3.6px) |
+| **1300** | Club Player | 6 plies | 17% | 4% | ~500ms – 3.0s | Light (2.9px) |
+| **1400** | Strong Club | 7 plies | 12% | 2.8% | ~550ms – 3.4s | Light (2.2px) |
+| **1500** | Advanced | 8 plies | 8% | 1.5% | ~600ms – 3.8s | Smooth (1.5px) |
+
+---
+
+## 🛠️ Installation Guide
+
+Since the extension runs locally and is not hosted on the Chrome Web Store, you can easily install it as an unpacked developer extension:
+
+1. **Download the source:** Clone this repository or download the latest zipped bundle from the [Releases](https://github.com/physicalaff/Knight-Chess-Helper/releases) page.
+2. **Unpack the archive:** Extract the files into a dedicated folder on your computer.
+3. **Open Chrome Extensions:** Navigate to `chrome://extensions/` in your browser.
+4. **Enable Developer Mode:** Toggle the **Developer mode** switch in the top-right corner.
+5. **Load Unpacked:** Click the **Load unpacked** button in the top-left corner and select the extracted extension folder.
+6. **Start Playing:** Open any game on [Chess.com](https://www.chess.com/) and click the floating Knight icon to open the dashboard!
+
+---
+
+## 🏗️ Architecture & Security
+
+To bypass Chess.com's strict sandboxing and Content Security Policies, Knight uses a modern Manifest V3 multi-layered messaging system:
+
+# <img src="Knight.png" width="38" valign="middle"> Knight — Chess Helper v4.1.0
+
+🛡️ **An advanced, highly polished, and human-like chess assistant for Chess.com.** 
+
+Knight is a Chrome extension designed to assist your chess games entirely locally. Powered by WebAssembly (WASM) and Chrome's Offscreen Document API, it analyzes positions offline, predicts human thinking times, simulates natural mouse trajectories, and offers a premium futuristic dashboard interface.
+
+---
+
+![Knight Banner](Knight-Banner.png)
+
+---
+
+## 🚀 Key Features
+
+* 🤖 **Auto-Play** — Automatically execute moves on your behalf with natural, randomized human delay and organic mouse paths.
+* 🧠 **100% Local Engine** — Powered by a local **Stockfish 18 (WebAssembly)** engine. It performs all calculations inside an isolated `Offscreen Document` without making third-party server calls, bypassing Chess.com's strict Content Security Policy (CSP).
+* ⚡ **Smart Think Time & Predictability** — The engine dynamically adapts its thinking time:
+  * **Obvious Moves (Near-Instant):** Direct recaptures on the same square or forced mates-in-1 are executed in **110–310ms** to replicate instant human reflexes.
+  * **Complex Positions (Deliberate Choice):** Close games with active tactical threats prompt the engine to think **1.8x – 2.1x** longer, simulating a player deep in thought.
+* 🎯 **Dynamic ELO Calibration (1000–1500)** — A real, mathematically scaled difficulty system that changes search depth, blunder rates, and physical mouse movements.
+* ⬡ **Instant Board Hints** — Draws the best move dynamically on the chessboard using animated dashes and arrows. **Zero cooldown**—hints update instantly on click.
+* 📖 **Opening Book** — Automatically plays the first 14 half-moves naturally using Lichess Masters Database to look indistinguishable from a human player.
+* 🌌 **Obsidian Glass UI** — A premium dark-cyber dashboard featuring compact real-time game statistics (clocks, evaluations, moves log) and a pulsing floating neon indicator.
+
+---
+
+## 📊 ELO Scaling Matrix
+
+The ELO slider isn't just cosmetic; it dynamically adjusts the following core engine parameters in real-time:
+
+| ELO Level | Category | Depth | Mistake Chance | Blunder Chance | Average Thinking Time | Mouse Wobble |
+| :---: | :--- | :---: | :---: | :---: | :---: | :---: |
+| **1000** | Beginner | 3 plies | 30% | 8% | ~300ms – 2.0s | Heavy (5px) |
+| **1100** | Casual | 4 plies | 25% | 6.5% | ~400ms – 2.4s | Moderate (4.3px) |
+| **1200** | Intermediate | 5 plies | 21% | 5.2% | ~450ms – 2.7s | Moderate (3.6px) |
+| **1300** | Club Player | 6 plies | 17% | 4% | ~500ms – 3.0s | Light (2.9px) |
+| **1400** | Strong Club | 7 plies | 12% | 2.8% | ~550ms – 3.4s | Light (2.2px) |
+| **1500** | Advanced | 8 plies | 8% | 1.5% | ~600ms – 3.8s | Smooth (1.5px) |
+
+---
+
+## 🛠️ Installation Guide
+
+Since the extension runs locally and is not hosted on the Chrome Web Store, you can easily install it as an unpacked developer extension:
+
+1. **Download the source:** Clone this repository or download the latest zipped bundle from the [Releases](https://github.com/physicalaff/Knight-Chess-Helper/releases) page.
+2. **Unpack the archive:** Extract the files into a dedicated folder on your computer.
+3. **Open Chrome Extensions:** Navigate to `chrome://extensions/` in your browser.
+4. **Enable Developer Mode:** Toggle the **Developer mode** switch in the top-right corner.
+5. **Load Unpacked:** Click the **Load unpacked** button in the top-left corner and select the extracted extension folder.
+6. **Start Playing:** Open any game on [Chess.com](https://www.chess.com/) and click the floating Knight icon to open the dashboard!
+
+---
+
+## 🏗️ Architecture & Security
+
+To bypass Chess.com's strict sandboxing and Content Security Policies, Knight uses a modern Manifest V3 multi-layered messaging system:
+
+<img width="1774" height="887" alt="image" src="https://github.com/user-attachments/assets/0a9a8e6a-b5dd-4f61-8e42-2c2a322159c6" />
