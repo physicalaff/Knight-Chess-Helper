@@ -1,0 +1,7 @@
+#ch-root, #ch-bubble, #ch-panel {
+    box-sizing: border-box;
+}
+
+#ch-root * {
+    box-sizing: border-box;
+}

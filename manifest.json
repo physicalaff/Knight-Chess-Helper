@@ -1,0 +1,42 @@
+{
+    "manifest_version": 3,
+    "name": "Knight — Chess Assistant",
+    "version": "4.1",
+    "description": "Human-like chess assistant for chess.com",
+    "icons": {
+        "16":  "Knight.png",
+        "48":  "Knight.png",
+        "128": "Knight.png"
+    },
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "Knight.png", 
+                "stockfish/stockfish.js", 
+                "stockfish/stockfish.wasm"
+            ],
+            "matches": ["https://www.chess.com/*"]
+        }
+    ],
+    "background": {
+        "service_worker": "background.js",
+        "type": "module"
+    },
+    "permissions": [
+        "offscreen"
+    ],
+    "content_security_policy": {
+        "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+    },
+    "content_scripts": [
+        {
+            "matches": ["https://www.chess.com/*"],
+            "css": ["style.css"],
+            "js": ["engine.js", "ui.js"],
+            "run_at": "document_idle"
+        }
+    ],
+    "host_permissions": [
+        "https://explorer.lichess.ovh/*"
+    ]
+}
