@@ -1,6 +1,6 @@
 <img width="512" height="512" alt="Knight" src="https://github.com/user-attachments/assets/e255d1fa-0f43-4916-b27f-c23167f97d2d" />
 
-Knight — Chess Helper v4.1.0
+Knight — Chess Helper v4.2.0
 
 🛡️ **An advanced, highly polished, and human-like chess assistant for Chess.com.** 
 
