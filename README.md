@@ -20,6 +20,15 @@ Knight is a Chrome extension designed to assist your chess games entirely locall
 * 📖 **Opening Book** — Automatically plays the first 14 half-moves naturally using Lichess Masters Database to look indistinguishable from a human player.
 * 🌌 **Obsidian Glass UI** — A premium dark-cyber dashboard featuring compact real-time game statistics (clocks, evaluations, moves log) and a pulsing floating neon indicator.
 
+## 📊 Privacy & Telemetry Disclosure
+
+To help the developer evaluate the active user base and decide whether to continue dedicating time to future updates or archive the project, the extension includes a lightweight, 100% anonymous telemetry system.
+
+* **What is tracked:** A randomly generated unique client ID (e.g., `usr_abcdef123`) and the date/time of the daily extension launch.
+* **What is NOT tracked:** Absolutely no personal data, Chess.com credentials, session cookies, tokens, or game histories are collected. 
+* **How it works:** Once a day, when you open Chess.com, the extension sends a single anonymous ping to a secure, private Google Spreadsheet.
+* **Why this is necessary:** This data is used solely as a signal of active interest. It helps the developer understand if there is a real audience using the assistant, determining whether to release future updates (such as pondering, threat heatmaps, and position complexity metrics) or archive the repository.
+
 ---
 
 ## 📊 ELO Scaling Matrix
