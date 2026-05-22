@@ -1,3 +1,5 @@
+### ⭐ If you like the project — please give it a star!
+
 <img width="512" height="512" alt="Knight" src="https://github.com/user-attachments/assets/e255d1fa-0f43-4916-b27f-c23167f97d2d" />
 
 Knight — Chess Helper v4.2.0
