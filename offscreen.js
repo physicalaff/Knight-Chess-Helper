@@ -1,5 +1,6 @@
 let stockfishWorker = null;
 let currentResolve = null;
+let currentAudio = null;
 
 let latestEval = 0;
 let latestMate = null;
@@ -64,6 +65,38 @@ function getStockfishWorker() {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.target !== 'offscreen') return;
+
+    if (message.type === 'SET_VISIBILITY') {
+        if (currentAudio && currentAudio.src.includes('sf.mp3')) {
+            if (message.visible) {
+                currentAudio.play().catch(() => {});
+            } else {
+                currentAudio.pause();
+            }
+        }
+        return;
+    }
+
+    if (message.type === 'STOP_SOUND') {
+        if (currentAudio) {
+            currentAudio.pause();
+            currentAudio.currentTime = 0;
+            currentAudio = null;
+        }
+        return;
+    }
+
+    if (message.type === 'PLAY_SOUND') {
+        try {
+            if (currentAudio && !currentAudio.paused && !currentAudio.ended) {
+                return;
+            }
+            currentAudio = new Audio(chrome.runtime.getURL(`assets/${message.sound}`));
+            currentAudio.volume = 0.55;
+            currentAudio.play().catch(() => {});
+        } catch (_) {}
+        return;
+    }
 
     if (message.type === 'ANALYZE') {
         const { fen, depth, requestId, tabId } = message;

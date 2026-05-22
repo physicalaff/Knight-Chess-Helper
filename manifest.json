@@ -1,17 +1,17 @@
 {
     "manifest_version": 3,
     "name": "Knight — Chess Assistant",
-    "version": "4.2",
+    "version": "5.3",
     "description": "Human-like chess assistant for chess.com",
     "icons": {
-        "16":  "Knight.png",
-        "48":  "Knight.png",
-        "128": "Knight.png"
+        "16":  "assets/Knight.png",
+        "48":  "assets/Knight.png",
+        "128": "assets/Knight.png"
     },
     "web_accessible_resources": [
         {
             "resources": [
-                "Knight.png", 
+                "assets/*", 
                 "stockfish/stockfish.js", 
                 "stockfish/stockfish.wasm"
             ],
@@ -19,6 +19,7 @@
         }
     ],
     "background": {
+        "scripts": ["background.js"],
         "service_worker": "background.js",
         "type": "module"
     },

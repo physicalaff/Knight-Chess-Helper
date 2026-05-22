@@ -7,15 +7,23 @@ const NUM_FILE = {1:'a',2:'b',3:'c',4:'d',5:'e',6:'f',7:'g',8:'h'};
 
 const cfg = {
     elo: 1300,
-    mistakes: 0.18,
+    preset: 'positional',
+    mistakes: 0.15,
     blunders: 0.04,
-    depth: 5,
+    depth: 6,
     thinkMin: 500,
     thinkMax: 3000,
     wobble: 3.5,
     badHoverChance: 0.12,
     reconsiderChance: 0.07,
     premoveChance: 0.15,
+    randDepthEnabled: true,
+    fatigueEnabled: true,
+    distractionsEnabled: true,
+    ponderingEnabled: true,
+    misclicksEnabled: true,
+    mouseSpeed: 1.0,
+    thinkVariance: 1.0
 };
 
 let state = {
@@ -27,6 +35,8 @@ let state = {
     quickMoveStreak: 0,
     thinking: false,
     lastMove: null,
+    gameEnded: false,
+    distractionTriggeredThisGame: false
 };
 
 const sleep  = ms => new Promise(r => setTimeout(r, ms));
@@ -225,7 +235,6 @@ async function analyze(fen, depth, tries = 2) {
         if (pendingAnalyses.has(requestId)) {
             const { resolve } = pendingAnalyses.get(requestId);
             pendingAnalyses.delete(requestId);
-            console.warn('[ch:engine] Local search timeout fallback triggered.');
             resolve({ eval: 0, mate: null, best: null });
         }
     }, 10000);
@@ -288,8 +297,13 @@ function thinkTime(analysis, fen, from, to, isBook) {
         spread *= 0.30; 
     }
     else if (absEval < 1.2 && tactics) {
-        base *= 1.85;   
-        spread *= 2.10; 
+        if (cfg.preset === 'positional') {
+            base *= 2.15;
+            spread *= 2.40;
+        } else {
+            base *= 1.85;   
+            spread *= 2.10; 
+        }
     } 
     else if (absEval < 1.5) {
         base *= 1.30; 
@@ -306,6 +320,22 @@ function thinkTime(analysis, fen, from, to, isBook) {
         state.quickMoveStreak = 0;
     }
 
+    base *= cfg.thinkVariance;
+    spread *= cfg.thinkVariance;
+
+    if (cfg.fatigueEnabled && state.moves >= 15) {
+        const factor = 1 + (state.moves - 15) * 0.025;
+        base *= factor;
+        spread *= factor;
+    }
+
+    if (cfg.distractionsEnabled && !state.distractionTriggeredThisGame && state.moves > 6 && Math.random() < 0.03) {
+        state.distractionTriggeredThisGame = true;
+        const distractionDelay = rndInt(8000, 15000);
+        notify(`Distracted for ${(distractionDelay / 1000).toFixed(1)}s`);
+        return distractionDelay;
+    }
+
     if (clock < 20)       { base = Math.min(base, 280); spread = Math.min(spread, 400); }
     else if (clock < 45)  { base *= 0.40; spread *= 0.35; }
     else if (clock < 90)  { base *= 0.60; spread *= 0.50; }
@@ -319,6 +349,7 @@ function thinkTime(analysis, fen, from, to, isBook) {
 
 async function pickMove(fen, main) {
     const r = Math.random();
+    
     if (r < cfg.blunders) {
         state.justBlundered = true;
         const w = await analyze(fen, 2);
@@ -326,10 +357,12 @@ async function pickMove(fen, main) {
     } else {
         state.justBlundered = false;
     }
+    
     if (r < cfg.blunders + cfg.mistakes) {
-        const w = await analyze(fen, 2);
+        const w = await analyze(fen, 3);
         if (w.best) return w.best;
     }
+    
     return main.best;
 }
 
@@ -340,7 +373,8 @@ function bezier(t, p0, p1, p2, p3) {
 
 async function moveTo(x0, y0, x1, y1, held = 0) {
     const dist  = Math.hypot(x1-x0, y1-y0);
-    const steps = clamp(Math.floor(dist / 7), 8, 38);
+    const baseSteps = clamp(Math.floor(dist / (7 * cfg.mouseSpeed)), 8, 38);
+    const steps = Math.max(2, baseSteps);
     const drift = dist * rnd(0.06, 0.18);
     const ang   = Math.atan2(y1-y0, x1-x0) + rnd(-0.45, 0.45);
     const cx1   = x0 + (x1-x0)*rnd(0.2, 0.4) + Math.cos(ang)*drift;
@@ -351,8 +385,12 @@ async function moveTo(x0, y0, x1, y1, held = 0) {
     for (let i = 0; i <= steps; i++) {
         const t = i / steps;
         const e = t < 0.5 ? 2*t*t : -1 + (4-2*t)*t;
-        const x = bezier(e, x0, cx1, cx2, x1) + (Math.random()-0.5)*cfg.wobble;
-        const y = bezier(e, y0, cy1, cy2, y1) + (Math.random()-0.5)*cfg.wobble;
+        
+        const tremorX = Math.sin(t * 80) * 0.45;
+        const tremorY = Math.cos(t * 90) * 0.45;
+
+        const x = bezier(e, x0, cx1, cx2, x1) + (Math.random()-0.5)*cfg.wobble + tremorX;
+        const y = bezier(e, y0, cy1, cy2, y1) + (Math.random()-0.5)*cfg.wobble + tremorY;
         const el = document.elementFromPoint(x, y) || document.body;
         el.dispatchEvent(new PointerEvent('pointermove', {
             bubbles: true, cancelable: true, view: window,
@@ -416,6 +454,26 @@ async function playMove(move) {
     const br = b.getBoundingClientRect();
     const sx = br.left + rnd(30, br.width  - 30);
     const sy = br.top  + rnd(30, br.height - 30);
+
+    if (cfg.misclicksEnabled && Math.random() < 0.04) {
+        const files = ['a','b','c','d','e','f','g','h'];
+        const currentFileIdx = files.indexOf(from[0]);
+        const currentRank = parseInt(from[1]);
+        const targetFile = files[clamp(currentFileIdx + rndInt(-1, 1), 0, 7)];
+        const targetRank = clamp(currentRank + rndInt(-1, 1), 1, 8);
+        const wrongSq = `${targetFile}${targetRank}`;
+        
+        if (wrongSq !== from) {
+            const wrongRect = squareRect(wrongSq);
+            if (wrongRect) {
+                await moveTo(sx, sy, wrongRect.centerX, wrongRect.centerY, 0);
+                tap('pointerdown', document.elementFromPoint(wrongRect.centerX, wrongRect.centerY) || b, wrongRect.centerX, wrongRect.centerY);
+                await sleep(rnd(150, 300));
+                tap('pointerup', document.elementFromPoint(wrongRect.centerX, wrongRect.centerY) || document.body, wrongRect.centerX, wrongRect.centerY);
+                await sleep(rnd(200, 450));
+            }
+        }
+    }
 
     if (Math.random() < cfg.badHoverChance) await fakeHoverWrong(fr, from);
 
@@ -494,6 +552,19 @@ function notify(msg) {
 async function tick() {
     if (!window.chessHelper?.autoPlay || running) return;
 
+    const gameOverModal = document.querySelector(
+        '.game-over-modal-container, .board-modal-container, .game-over-header-component, ' + 
+        '.board-modal-modal, .game-over-dialog, .game-over-modal, [data-behavior="game-over-modal"], ' +
+        '.board-modal-content, .game-over-header-title'
+    );
+    if (gameOverModal && !state.gameEnded) {
+        state.gameEnded = true;
+        handleGameOver(gameOverModal);
+        return;
+    } else if (!gameOverModal) {
+        state.gameEnded = false;
+    }
+
     const fen = getFEN();
     if (!fen) return;
 
@@ -502,9 +573,13 @@ async function tick() {
 
     if (turn !== me) {
         lastFen = '';
-        if (!prefetch || prefetch.fen !== fen) {
+        if (cfg.ponderingEnabled && (!prefetch || prefetch.fen !== fen)) {
             const snap = fen;
-            analyze(snap, cfg.depth).then(a => {
+            let currentDepth = cfg.depth;
+            if (cfg.randDepthEnabled) {
+                currentDepth = clamp(cfg.depth + rndInt(-2, 2), 3, 10);
+            }
+            analyze(snap, currentDepth).then(a => {
                 if (a.best && getFEN() === snap) prefetch = { fen: snap, data: a };
             });
         }
@@ -524,7 +599,11 @@ async function tick() {
 
         let engine = null;
         if (!bk) {
-            engine = (prefetch?.fen === fen) ? prefetch.data : await analyze(fen, cfg.depth);
+            let currentDepth = cfg.depth;
+            if (cfg.randDepthEnabled) {
+                currentDepth = clamp(cfg.depth + rndInt(-2, 2), 3, 10);
+            }
+            engine = (prefetch?.fen === fen) ? prefetch.data : await analyze(fen, currentDepth);
         }
         prefetch = null;
 
@@ -571,6 +650,10 @@ async function tick() {
     }
 }
 
+function handleGameOver(modal) {
+    window.dispatchEvent(new CustomEvent('ch:gameover', { detail: { modalText: modal.textContent } }));
+}
+
 const observer = new MutationObserver(() => { if (window.chessHelper?.autoPlay) tick(); });
 
 function attachObserver() {
@@ -578,8 +661,36 @@ function attachObserver() {
     if (b) { observer.observe(b, { childList: true, subtree: true, attributes: true }); }
     else   { setTimeout(attachObserver, 1000); }
 }
-attachObserver();
-setInterval(() => { if (window.chessHelper?.autoPlay) tick(); }, 3500);
+
+async function loadConfigOnStartup() {
+    try {
+        const stored = await chrome.storage.local.get(['appConfig']);
+        if (stored && stored.appConfig) {
+            window.chessHelperEngine?.updateConfig({
+                preset: stored.appConfig.preset,
+                blunders: stored.appConfig.blunders,
+                mouseSpeed: stored.appConfig.mouseSpeed,
+                thinkVariance: stored.appConfig.thinkVariance,
+                randDepthEnabled: stored.appConfig.randDepthEnabled,
+                fatigueEnabled: stored.appConfig.fatigueEnabled,
+                distractionsEnabled: stored.appConfig.distractionsEnabled,
+                ponderingEnabled: stored.appConfig.ponderingEnabled,
+                misclicksEnabled: stored.appConfig.misclicksEnabled
+            });
+            if (stored.appConfig.elo) {
+                window.chessHelperEngine?.setElo(stored.appConfig.elo);
+            }
+        }
+    } catch (_) {}
+}
+
+try {
+    attachObserver();
+    setInterval(() => { if (window.chessHelper?.autoPlay) tick(); }, 3500);
+    loadConfigOnStartup();
+} catch (e) {
+    console.error('[ch:engine] Initialization exception:', e);
+}
 
 window.chessHelperEngine = {
     trigger() { running = false; lastFen = ''; prefetch = null; tick(); },
@@ -588,15 +699,18 @@ window.chessHelperEngine = {
     myColor,
 
     async hint(fen) {
-        const a = await analyze(fen, cfg.depth);
+        let currentDepth = cfg.depth;
+        if (cfg.randDepthEnabled) {
+            currentDepth = clamp(cfg.depth + rndInt(-2, 2), 3, 10);
+        }
+        const a = await analyze(fen, currentDepth);
         return a.best;
     },
 
     setElo(elo) {
-        const t       = clamp((elo - 1000) / 500, 0, 1);
-        cfg.elo       = elo;
-        cfg.mistakes  = 0.30 - t * 0.22;
-        cfg.blunders  = 0.08 - t * 0.065;
+        const targetElo = isNaN(parseInt(elo)) ? 1300 : parseInt(elo);
+        const t       = clamp((targetElo - 1000) / 500, 0, 1);
+        cfg.elo       = targetElo;
         cfg.depth     = Math.round(3 + t * 5);
         cfg.thinkMin  = Math.round(320 + t * 280);
         cfg.thinkMax  = Math.round(2000 + t * 1800);
@@ -604,13 +718,17 @@ window.chessHelperEngine = {
         cfg.badHoverChance  = 0.20 - t * 0.16;
         cfg.reconsiderChance = 0.12 - t * 0.09;
         clearCache();
-        notify(`elo=${elo} depth=${cfg.depth} mistakes=${(cfg.mistakes*100).toFixed(0)}%`);
+    },
+
+    updateConfig(newConfig) {
+        Object.assign(cfg, newConfig);
+        clearCache();
     },
 
     getState: () => ({ ...state, phase: gamePhase(getFEN() || '') }),
 
     reset() {
-        state = { moves: 0, halfMoves: 0, eval: 0, justBlundered: false, lastWasCapture: false, quickMoveStreak: 0, thinking: false, lastMove: null };
+        state = { moves: 0, halfMoves: 0, eval: 0, justBlundered: false, lastWasCapture: false, quickMoveStreak: 0, thinking: false, lastMove: null, gameEnded: false, distractionTriggeredThisGame: false };
         running = false; lastFen = ''; prefetch = null;
         clearCache();
     },
