@@ -117,4 +117,4 @@ Since the extension runs locally and is not hosted on the Chrome Web Store, you 
 
 To bypass Chess.com's strict sandboxing and Content Security Policies, Knight uses a modern Manifest V3 multi-layered messaging system:
 
-<img width="1774" height="1774" alt="image" src="https://github.com/user-attachments/assets/0a9a8e6a-b5dd-4f61-8e42-2c2a322159c6" />
+<img width="1774" height="982" alt="image" src="https://github.com/user-attachments/assets/0a9a8e6a-b5dd-4f61-8e42-2c2a322159c6" />
