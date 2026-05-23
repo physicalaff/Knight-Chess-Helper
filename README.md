@@ -125,7 +125,8 @@ Since the extension runs locally and is not hosted on the Chrome Web Store, you 
 5. **Load Unpacked:** Click the **Load unpacked** button (or "Load Temporary Add-on") and select the extracted extension folder.
 6. **Start Playing:** Open any game on [Chess.com](https://www.chess.com/) and click the floating Knight icon to open the dashboard!
 
----## 🏗️ Architecture & Security
+---
+## 🏗️ Architecture & Security
 
 To bypass Chess.com's strict sandboxing and Content Security Policies, Knight uses a modern Manifest V3 multi-layered messaging system:
 
