@@ -267,7 +267,6 @@ async function init() {
             }
             $('ch-opening-card')?.classList.add('hidden');
             
-            // Reset evaluation bar
             const fill = $('ch-eval-bar-fill');
             if (fill) {
                 fill.style.width = '50%';
@@ -378,13 +377,11 @@ function panelHTML() {
         <span id="ch-phase-tag">–</span>
     </div>
 
-    <!-- Real-time Opening explorer -->
     <div id="ch-opening-card" class="control-card hidden" style="margin: 8px 18px 4px; padding: 10px 14px; display: flex; align-items: center; gap: 10px; background: rgba(0, 0, 0, 0.25);">
         <span id="ch-opening-eco" style="font-size: 10px; font-weight: 800; background: var(--border-glow); color: #fff; padding: 2px 6px; border-radius: 4px; text-transform: uppercase;">A00</span>
         <span id="ch-opening-name" style="font-size: 11px; font-weight: 600; color: var(--text-sub); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Starting Position</span>
     </div>
 
-    <!-- Obsidian-Neon Fluid Evaluation Bar -->
     <div id="ch-eval-bar-wrapper" class="control-card" style="margin: 8px 18px 4px; padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; background: rgba(0,0,0,0.25); position: relative; overflow: hidden;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <span style="font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted);">${appConfig.lang === 'ru' ? 'СИЛА ПОЗИЦИИ' : 'POSITION STRENGTH'}</span>
@@ -920,7 +917,6 @@ function bindEvents() {
         $('st-eval').textContent  = '–';
         $('ch-opening-card')?.classList.add('hidden');
         
-        // Reset evaluation bar
         const fill = $('ch-eval-bar-fill');
         if (fill) {
             fill.style.width = '50%';
@@ -1863,7 +1859,6 @@ function syncStats() {
     }
 
     if (isFinite(myEval)) {
-        // Масштабируем оценку от -4.0 до +4.0 в проценты от 0% до 100%
         const clampedEval = Math.max(-4.0, Math.min(4.0, myEval));
         const pct = Math.round(((clampedEval + 4.0) / 8.0) * 100);
         
@@ -1874,15 +1869,14 @@ function syncStats() {
         if (fill) {
             fill.style.width = `${pct}%`;
             
-            // Динамический цвет и свечение в зависимости от преимущества
             if (myEval > 0.3) {
-                fill.style.background = '#0df5a3'; // Яркий неоново-зеленый
+                fill.style.background = '#0df5a3';
                 fill.style.boxShadow = '0 0 12px rgba(13, 245, 163, 0.65)';
             } else if (myEval < -0.3) {
-                fill.style.background = '#ff3366'; // Яркий неоново-красный
+                fill.style.background = '#ff3366';
                 fill.style.boxShadow = '0 0 12px rgba(255, 51, 102, 0.65)';
             } else {
-                fill.style.background = 'var(--text-muted)'; // Нейтральный серый
+                fill.style.background = 'var(--text-muted)';
                 fill.style.boxShadow = '0 0 8px var(--border)';
             }
         }
