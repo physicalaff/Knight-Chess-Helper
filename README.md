@@ -4,7 +4,7 @@
   <img width="350" height="350" alt="Knight" src="https://github.com/user-attachments/assets/e255d1fa-0f43-4916-b27f-c23167f97d2d" style="border-radius: 20px; box-shadow: 0px 4px 20px rgba(0,0,0,0.5);" />
 </p>
 
-# <img src="assets/Knight.png" width="38" valign="middle"> Knight — Chess Helper v5.3.0
+# <img src="assets/Knight.png" width="38" valign="middle"> Knight — Chess Helper v6.1.0
 
 <p align="left">
   <img src="https://img.shields.io/github/stars/physicalaff/Knight-Chess-Helper?style=for-the-badge&color=238636&logo=github" alt="GitHub Stars" />
