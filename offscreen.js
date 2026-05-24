@@ -107,6 +107,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         currentActiveColor = fen.split(' ')[1] || 'w';
 
         if (currentResolve) {
+            try {
+                worker.postMessage('stop');
+            } catch (_) {}
             currentResolve({ eval: 0, mate: null, best: null });
         }
 

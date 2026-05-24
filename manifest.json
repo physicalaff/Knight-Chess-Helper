@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "Knight — Chess Assistant",
-    "version": "5.3",
+    "version": "6.0",
     "description": "Human-like chess assistant for chess.com",
     "icons": {
         "16":  "assets/Knight.png",
@@ -19,7 +19,6 @@
         }
     ],
     "background": {
-        "scripts": ["background.js"],
         "service_worker": "background.js",
         "type": "module"
     },
@@ -34,7 +33,13 @@
         {
             "matches": ["https://www.chess.com/*"],
             "css": ["style.css"],
-            "js": ["engine.js", "ui.js"],
+            "js": [
+                "mouse.js",
+                "stats.js",
+                "book.js",
+                "engine.js",
+                "ui.js"
+            ],
             "run_at": "document_idle"
         }
     ],
