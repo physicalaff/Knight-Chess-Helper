@@ -733,6 +733,31 @@ function playGreetingSound() {
     playSound(`${randomId}.mp3`);
 }
 
+function bindSetupEvents() {
+    $('lang-en').onclick = () => selectLanguage('en');
+    $('lang-ru').onclick = () => selectLanguage('ru');
+}
+
+function selectLanguage(lang) {
+    appConfig.lang = lang;
+    const step1 = $('setup-step-1');
+    const step2 = $('setup-step-2');
+    
+    step1.classList.remove('active');
+    setTimeout(() => {
+        step1.style.display = 'none';
+        step2.style.display = 'block';
+        setTimeout(() => step2.classList.add('active'), 50);
+    }, 250);
+
+    $('telemetry-sub').textContent = TRANSLATIONS[lang].setup_telemetry_sub;
+    $('telemetry-yes').textContent = TRANSLATIONS[lang].setup_yes;
+    $('telemetry-no').textContent = TRANSLATIONS[lang].setup_no;
+
+    $('telemetry-yes').onclick = () => selectTelemetry(true);
+    $('telemetry-no').onclick = () => selectTelemetry(false);
+}
+
 async function selectTelemetry(enabled) {
     appConfig.telemetryEnabled = enabled;
     await chrome.storage.local.set({ appConfig });
