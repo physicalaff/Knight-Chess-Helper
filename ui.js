@@ -1475,14 +1475,14 @@ function renderHistory() {
     }).join('');
 }
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const rndInt = (a, b) => Math.floor(a + Math.random() * (b - a));
+const uiSleep = ms => new Promise(r => setTimeout(r, ms));
+const uiRndInt = (a, b) => Math.floor(a + Math.random() * (b - a));
 
 async function triggerAutoNewGame() {
     if (!appConfig.autoNewGame) return;
     
     console.log('[ch:ui] Auto New Game is enabled. Searching for new game buttons in 3-6s...');
-    await sleep(rndInt(3000, 6000));
+    await uiSleep(uiRndInt(3000, 6000));
     
     if (!appConfig.autoNewGame) return;
     
