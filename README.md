@@ -16,6 +16,18 @@
 
 ---
 
+## ⚖️ Disclaimer
+
+> [!WARNING]
+> Knight — Chess Helper is a chess training and analysis tool designed for educational and self-improvement purposes.It is not a cheat. The extension runs entirely locally using Stockfish WebAssembly, performs all calculations in your browser, and does not interact with or send any data to Chess.com servers.However, using any kind of engine assistance during rated online games violates Chess.com’s Terms of Service and may result in account penalties.
+We strongly recommend using Knight only in the following cases:
+Training games
+Game analysis
+Play against computer
+Study and improvement purposes
+The author is not responsible for any consequences resulting from misuse of this tool. Please use it responsibly and in accordance with the spirit of fair play.
+
+
 ## 📊 Project Analytics
 
 <p align="center">
@@ -135,14 +147,6 @@ To bypass Chess.com's strict sandboxing and Content Security Policies, Knight us
 </p>
 
 ---
-
-## ⚖️ Disclaimer
-
-> [!WARNING]
-> This software is developed strictly for **educational and research purposes**. Using chess assistants, bots, or engines to cheat in online rated matches is a violation of Chess.com's Terms of Service and will result in account suspension. The author of this extension is not responsible for any misuse, account bans, or competitive violations. Use responsibly!
-
----
-
 ## 📝 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. Stockfish is licensed under the GPLv3.
