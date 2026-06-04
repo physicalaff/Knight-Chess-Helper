@@ -84,7 +84,8 @@ const TRANSLATIONS = {
         guide_regular: "Безопасный режим. Показывает лучшие ходы стрелками на доске. Автоматически ходы не делает.",
         guide_rage: "Максимальная сила. В сочетании с включенным режимом 'Пуля' клик по кнопке 'Подсказка' мгновенно делает ход за 1-3 сек.",
         guide_warn_title: "Предупреждение",
-        guide_warn_text: "Использование авто-игры в рейтинговых матчах может привести к блокировке вашего аккаунта. Играйте осторожно!"
+        guide_warn_text: "Использование авто-игры в рейтинговых матчах может привести к блокировке вашего аккаунта. Играйте осторожно!",
+        auto_new_game: "Авто новая игра"
     },
     en: {
         title: "Knight",
@@ -142,7 +143,8 @@ const TRANSLATIONS = {
         guide_regular: "Safe mode. Displays best moves via arrows on board. Does not make moves automatically.",
         guide_rage: "Maximum power. Combined with 'Bullet Mode', clicking the 'Show hint' button instantly plays the move in 1-3s.",
         guide_warn_title: "Warning",
-        guide_warn_text: "Abusing automated play in rated matches can lead to account bans. Play responsibly!"
+        guide_warn_text: "Abusing automated play in rated matches can lead to account bans. Play responsibly!",
+        auto_new_game: "Auto New Game"
     }
 };
 
@@ -168,7 +170,8 @@ let appConfig = {
     games: 0,
     gameHistory: [],
     rageMode: false,
-    bulletMode: false
+    bulletMode: false,
+    autoNewGame: false
 };
 
 function t(key) {
@@ -672,6 +675,10 @@ function panelHTML() {
                 <span>${t('theme')}</span>
                 <input type="checkbox" id="set-theme">
             </label>
+            <label class="switch-row">
+                <span>${t('auto_new_game')}</span>
+                <input type="checkbox" id="set-auto-new-game">
+            </label>
         </div>
 
         <div class="settings-buttons">
@@ -1150,6 +1157,7 @@ function loadSettingsView() {
     $('set-mute-victory').checked = appConfig.muteVictorySound;
     $('set-mute-greeting').checked = appConfig.muteGreetingSound;
     $('set-mute-sf').checked = appConfig.muteSfMusic;
+    $('set-auto-new-game').checked = appConfig.autoNewGame;
 
     $('ch-bullet-toggle').checked = appConfig.bulletMode;
     $('ch-bullet-indicator').classList.toggle('active', appConfig.bulletMode);
@@ -1260,6 +1268,7 @@ function loadSettingsView() {
     toggleSet('set-mute-victory', 'muteVictorySound');
     toggleSet('set-mute-greeting', 'muteGreetingSound');
     toggleSet('set-mute-sf', 'muteSfMusic');
+    toggleSet('set-auto-new-game', 'autoNewGame');
 
     const statsData = window.chessHelperStats?.getStats() || { wins: 0, games: 0, history: [] };
     $('stat-games').textContent = statsData.games;
@@ -1464,6 +1473,87 @@ function renderHistory() {
             </div>
         `;
     }).join('');
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const rndInt = (a, b) => Math.floor(a + Math.random() * (b - a));
+
+async function triggerAutoNewGame() {
+    if (!appConfig.autoNewGame) return;
+    
+    console.log('[ch:ui] Auto New Game is enabled. Searching for new game buttons in 3-6s...');
+    await sleep(rndInt(3000, 6000));
+    
+    if (!appConfig.autoNewGame) return;
+    
+    const selectors = [
+        '.game-over-button-primary',
+        '.game-over-button-button',
+        '.game-over-buttons-component button',
+        '.game-over-buttons-playAgain',
+        '[data-action="next-game"]',
+        '[data-testid="next-game"]',
+        'button.game-over-button',
+        '.game-over-modal-container button',
+        '.board-modal-container button',
+        '.game-over-modal button',
+        '.game-over-dialog button',
+        '.board-layout-sidebar button',
+        '.sidebar-component button'
+    ];
+    
+    const keywords = [
+        'play again', 'new opponent', 'next game', 'new game', 'rematch',
+        'new 1 min', 'new 3 min', 'new 5 min', 'new 10 min', 'new 15 min', 'new 30 min',
+        'сыграть снова', 'новый соперник', 'следующая игра', 'новая игра', 'реванш',
+        'новая 1 мин', 'новая 3 мин', 'новая 5 мин', 'новая 10 мин', 'новая 15 мин', 'новая 30 мин'
+    ];
+    
+    for (const sel of selectors) {
+        const els = document.querySelectorAll(sel);
+        for (const el of els) {
+            if (el && el.offsetWidth > 0 && el.offsetHeight > 0) {
+                const text = el.textContent.toLowerCase();
+                if (keywords.some(kw => text.includes(kw))) {
+                    console.log(`[ch:ui] Found new game button by selector "${sel}": "${el.textContent.trim()}"`);
+                    clickElement(el);
+                    return;
+                }
+            }
+        }
+    }
+    
+    const allButtons = document.querySelectorAll('button');
+    for (const btn of allButtons) {
+        if (btn && btn.offsetWidth > 0 && btn.offsetHeight > 0) {
+            const text = btn.textContent.toLowerCase();
+            if (keywords.some(kw => text.includes(kw))) {
+                console.log(`[ch:ui] Found new game button by fallback text search: "${btn.textContent.trim()}"`);
+                clickElement(btn);
+                return;
+            }
+        }
+    }
+    
+    console.log('[ch:ui] Could not find any active new game button on the page.');
+}
+
+function clickElement(el) {
+    try {
+        const r = el.getBoundingClientRect();
+        const clientX = r.left + r.width/2 + (Math.random()-0.5)*3;
+        const clientY = r.top + r.height/2 + (Math.random()-0.5)*3;
+        
+        el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX, clientY }));
+        setTimeout(() => {
+            el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX, clientY }));
+            el.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX, clientY }));
+            console.log('[ch:ui] Clicked new game button!');
+        }, 150);
+    } catch (e) {
+        console.error('[ch:ui] Failed to click new game button:', e);
+        el.click();
+    }
 }
 
 function onGameOverDetected(detail) {
@@ -1848,6 +1938,9 @@ function onGameOverDetected(detail) {
         renderLog();
         setTimeout(renderHistory, 250);
         window.chessHelperEngine?.reset();
+        if (appConfig.autoNewGame) {
+            triggerAutoNewGame();
+        }
     }
 }
 
@@ -1922,9 +2015,14 @@ function syncStats() {
     const clockEl = $('st-clock');
     if (clockEl) {
         try {
-            const times = [...document.querySelectorAll('.clock-time-monospace, .clock-time')];
-            const el    = color === 'w' ? times[times.length - 1] : times[0];
-            if (el) clockEl.textContent = el.textContent.trim().replace(/\s/g, '') || '–';
+            const el = document.querySelector('.player-bottom .clock-time-monospace, .player-bottom .clock-time, .board-layout-bottom .clock-time-monospace, .board-layout-bottom .clock-time');
+            if (el) {
+                clockEl.textContent = el.textContent.trim().replace(/\s/g, '') || '–';
+            } else {
+                const times = [...document.querySelectorAll('.clock-time-monospace, .clock-time')];
+                const fallbackEl = times[times.length - 1];
+                if (fallbackEl) clockEl.textContent = fallbackEl.textContent.trim().replace(/\s/g, '') || '–';
+            }
         } catch (_) {}
     }
 }
@@ -1997,7 +2095,7 @@ function closePanel() { panel.classList.remove('open'); }
 function positionPanel() {
     const r = bubble.getBoundingClientRect();
     const W = window.innerWidth, H = window.innerHeight;
-    const pw = 300, ph = 480, m = 14;
+    const pw = panel.offsetWidth || 316, ph = panel.offsetHeight || 480, m = 14;
     let left = r.left > W/2 ? r.left - pw - m : r.right + m;
     let top  = r.top  > H/2 ? r.bottom - ph  : r.top;
     left = Math.max(m, Math.min(W - pw - m, left));
@@ -2242,7 +2340,8 @@ const STYLES = `
 #ch-panel {
     position:fixed;width:316px;
     background:var(--bg);border:1px solid var(--border);
-    border-radius:24px;overflow:hidden;pointer-events:none;
+    border-radius:24px;overflow-y:auto;overflow-x:hidden;pointer-events:none;
+    max-height:calc(100vh - 40px);
     opacity:0;transform:scale(0.93);
     transition: 
         opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1),

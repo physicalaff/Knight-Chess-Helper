@@ -10,7 +10,7 @@ let currentActiveColor = 'w';
 
 const isChrome = typeof chrome.offscreen !== 'undefined';
 
-async function setupOffscreen() {
+async function setupOffscreen(force = false) {
     if (!isChrome) return;
 
     if (creatingOffscreen) {
@@ -18,11 +18,17 @@ async function setupOffscreen() {
         return;
     }
 
-    if (chrome.runtime.getContexts) {
+    if (!force && chrome.runtime.getContexts) {
         const contexts = await chrome.runtime.getContexts({
             contextTypes: ['OFFSCREEN_DOCUMENT']
         });
         if (contexts.length > 0) return;
+    }
+
+    if (force) {
+        try {
+            await chrome.offscreen.closeDocument();
+        } catch (_) {}
     }
 
     creatingOffscreen = chrome.offscreen.createDocument({
@@ -222,6 +228,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     depth: message.depth,
                     requestId: message.requestId,
                     tabId: tabId
+                }).catch((err) => {
+                    console.warn('[ch:background] Failed to send message to offscreen document, recreating offscreen:', err);
+                    setupOffscreen(true).then(() => {
+                        chrome.runtime.sendMessage({
+                            target: 'offscreen',
+                            type: 'ANALYZE',
+                            fen: message.fen,
+                            depth: message.depth,
+                            requestId: message.requestId,
+                            tabId: tabId
+                        }).catch(err2 => {
+                            console.error('[ch:background] Message retry to offscreen failed:', err2);
+                        });
+                    });
                 });
             });
         } else {

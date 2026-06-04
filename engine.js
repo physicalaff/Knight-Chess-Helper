@@ -340,15 +340,22 @@
         };
     }
 
+    function parseTime(el) {
+        const parts = el.textContent.trim().replace(/\s/g, '').split(':').map(Number);
+        if (parts.length === 3) return parts[0]*3600 + parts[1]*60 + parts[2];
+        if (parts.length === 2) return parts[0]*60 + parts[1];
+        if (parts.length === 1 && !isNaN(parts[0])) return parts[0];
+        return Infinity;
+    }
+
     function myClock() {
         try {
-            const els   = [...document.querySelectorAll('.clock-time-monospace, .clock-time')];
-            const el    = myColor() === 'w' ? els[els.length - 1] : els[0];
-            if (!el) return Infinity;
-            const parts = el.textContent.trim().replace(/\s/g, '').split(':').map(Number);
-            if (parts.length === 3) return parts[0]*3600 + parts[1]*60 + parts[2];
-            if (parts.length === 2) return parts[0]*60 + parts[1];
-            if (parts.length === 1 && !isNaN(parts[0])) return parts[0];
+            const el = document.querySelector('.player-bottom .clock-time-monospace, .player-bottom .clock-time, .board-layout-bottom .clock-time-monospace, .board-layout-bottom .clock-time');
+            if (el) return parseTime(el);
+            
+            const els = [...document.querySelectorAll('.clock-time-monospace, .clock-time')];
+            const fallbackEl = els[els.length - 1];
+            if (fallbackEl) return parseTime(fallbackEl);
         } catch (_) {}
         return Infinity;
     }
@@ -515,6 +522,35 @@
         }
         
         return main.best;
+    }
+
+    async function fakeHoverWrong(target, skip) {
+        const col = myColor();
+        const pool = [...document.querySelectorAll('.piece')]
+            .filter(p => ['p','n','b','r','q','k'].some(t => p.classList.contains(`${col}${t}`)))
+            .filter(p => {
+                const s = Array.from(p.classList).find(c => c.startsWith('square-'));
+                if (!s) return false;
+                const n = s.split('-')[1];
+                return `${NUM_FILE[parseInt(n[0])]}${n[1]}` !== skip;
+            });
+        if (!pool.length) return;
+        const r  = pool[rndInt(0, pool.length)].getBoundingClientRect();
+        if (!r.width) return;
+        const wx = r.left + r.width/2, wy = r.top + r.height/2;
+        await moveTo(target.centerX, target.centerY, wx, wy, 0);
+        await sleep(rnd(100, 380));
+        await moveTo(wx, wy, target.centerX, target.centerY, 0);
+        await sleep(rnd(30, 90));
+    }
+
+    async function fakeReconsider(fx, fy, tx, ty) {
+        const mx = fx + (tx-fx)*rnd(0.1, 0.35);
+        const my = fy + (ty-fy)*rnd(0.1, 0.35);
+        await moveTo(fx, fy, mx, my, 1);
+        await sleep(rnd(90, 280));
+        await moveTo(mx, my, fx, fy, 1);
+        await sleep(rnd(50, 130));
     }
 
     async function playMove(move, instant = false) {
@@ -696,6 +732,7 @@
 
             if (!bk && !engine?.best) {
                 lastFen = '';
+                setTimeout(tick, 1000);
                 return;
             }
 
@@ -726,7 +763,11 @@
             if (getFEN() !== fen || !window.chessHelper.autoPlay) { lastFen = ''; return; }
 
             const move = bk ? bk : await pickMove(fen, engine);
-            if (!move) { lastFen = ''; return; }
+            if (!move) { 
+                lastFen = ''; 
+                setTimeout(tick, 1000);
+                return; 
+            }
             if (getFEN() !== fen || !window.chessHelper.autoPlay) return;
 
             await playMove(move, cfg.bulletMode);
