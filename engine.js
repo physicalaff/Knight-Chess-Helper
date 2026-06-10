@@ -1,3 +1,28 @@
+window.chessHelperIntervals = {
+    intervals: new Map(),
+    register(id, fn, ms) {
+        this.clear(id);
+        const tid = setInterval(fn, ms);
+        this.intervals.set(id, tid);
+        return tid;
+    },
+    clear(id) {
+        if (this.intervals.has(id)) {
+            clearInterval(this.intervals.get(id));
+            this.intervals.delete(id);
+        }
+    },
+    clearAll() {
+        for (const [id, tid] of this.intervals.entries()) {
+            clearInterval(tid);
+        }
+        this.intervals.clear();
+    },
+    count() {
+        return this.intervals.size;
+    }
+};
+
 (() => {
     const PIECE_MAP = {
         'wp':'P','wn':'N','wb':'B','wr':'R','wq':'Q','wk':'K',
@@ -137,6 +162,7 @@
         } else if (currentPlayersKey && lastPlayersKey && currentPlayersKey !== lastPlayersKey) {
             console.log(`[ch:engine] New game detected by players change: ${lastPlayersKey} -> ${currentPlayersKey}`);
             lastPlayersKey = currentPlayersKey;
+            lastGameId = currentGameId;
             changed = true;
         } else {
             if (currentGameId && !lastGameId) {
@@ -149,7 +175,9 @@
         
         if (changed) {
             window.chessHelperGameFENs = [];
-            await chrome.storage.local.set({ gameFens: [], gameId: currentGameId });
+            try {
+                await chrome.storage.local.set({ gameFens: [], gameId: currentGameId });
+            } catch (_) {}
             window.chessHelperEngine?.reset();
         }
     }
@@ -195,7 +223,7 @@
     const rndInt = (a, b) => Math.floor(rnd(a, b));
 
     function gauss(mean, std) {
-        const u = 1 - Math.random();
+        const u = Math.max(1e-10, 1 - Math.random());
         const z = Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * Math.random());
         return mean + z * std;
     }
@@ -239,7 +267,30 @@
         return 'w';
     }
 
+    function getFENFromController() {
+        const b = board();
+        if (!b) return null;
+        const paths = [
+            () => b.game?.getFEN?.(),
+            () => b.controller?.game?.getFEN?.(),
+            () => b.controller?.getFEN?.(),
+            () => b.game?.getFens?.().slice(-1)[0],
+            () => b.controller?.game?.getFens?.().slice(-1)[0],
+            () => b.controller?.getFens?.().slice(-1)[0]
+        ];
+        for (const p of paths) {
+            try {
+                const res = p();
+                if (typeof res === 'string' && res.includes('/')) return res;
+            } catch (_) {}
+        }
+        return null;
+    }
+
     function getFEN() {
+        const controllerFen = getFENFromController();
+        if (controllerFen) return controllerFen;
+
         const b = board();
         if (!b) return null;
         const pieces = b.querySelectorAll('.piece');
@@ -276,7 +327,7 @@
             return s + (e || '');
         });
 
-        return rows.join('/') + ` ${activeColor()} - - 0 1`;
+        return rows.join('/') + ` ${activeColor()} KQkq - 0 1`;
     }
 
     function squareRect(sq) {
@@ -291,7 +342,7 @@
         return { centerX: r.left + x + size / 2, centerY: r.top + y + size / 2, size };
     }
 
-    // Поиск фигуры на доске
+    
     function pieceAt(sq) {
         const b = board();
         if (!b) return null;
@@ -394,6 +445,7 @@
             }
         }, 10000);
 
+        const startTime = performance.now();
         chrome.runtime.sendMessage({
             target: 'background',
             type: 'ANALYZE',
@@ -408,13 +460,22 @@
         if (result && result.best) {
             if (engineCache.size > 120) engineCache.delete(engineCache.keys().next().value);
             engineCache.set(key, result);
+            const searchTime = Math.round(performance.now() - startTime);
+            try {
+                const stored = await chrome.storage.local.get(['appConfig']);
+                const cfg = stored.appConfig || {};
+                cfg.statAnalyses = (cfg.statAnalyses || 0) + 1;
+                cfg.statTotalSearchTime = (cfg.statTotalSearchTime || 0) + searchTime;
+                cfg.statTotalDepth = (cfg.statTotalDepth || 0) + depth;
+                await chrome.storage.local.set({ appConfig: cfg });
+            } catch (_) {}
             return result;
         }
 
         return { eval: 0, mate: null, best: null };
     }
 
-    // Очистка локального кэша ходов
+    
     function clearCache() {
         engineCache.clear();
         prefetch = null;
@@ -534,8 +595,7 @@
                 const n = s.split('-')[1];
                 return `${NUM_FILE[parseInt(n[0])]}${n[1]}` !== skip;
             });
-        if (!pool.length) return;
-        const r  = pool[rndInt(0, pool.length)].getBoundingClientRect();
+        const r  = pool[Math.floor(Math.random() * pool.length)].getBoundingClientRect();
         if (!r.width) return;
         const wx = r.left + r.width/2, wy = r.top + r.height/2;
         await moveTo(target.centerX, target.centerY, wx, wy, 0);
@@ -620,6 +680,16 @@
         state.lastWasCapture = oppPieceAt(to);
         state.lastMove = move;
 
+        try {
+            const stored = await chrome.storage.local.get(['appConfig']);
+            const cfg = stored.appConfig || {};
+            cfg.statMovesPlayed = (cfg.statMovesPlayed || 0) + 1;
+            const accuracyVal = state.justBlundered ? 35 : 100;
+            cfg.statTotalAccuracy = (cfg.statTotalAccuracy || 0) + accuracyVal;
+            cfg.statAccuracyCount = (cfg.statAccuracyCount || 0) + 1;
+            await chrome.storage.local.set({ appConfig: cfg });
+        } catch (_) {}
+
         window.dispatchEvent(new CustomEvent('ch:move', { detail: { move, book: false } }));
         return true;
     }
@@ -661,7 +731,7 @@
     let lastFen  = '';
     let watchdog = 0;
 
-    setInterval(() => {
+    window.chessHelperIntervals.register('watchdog', () => {
         if (running && Date.now() - watchdog > 35000) {
             running = false; lastFen = '';
             notify('watchdog reset');
@@ -674,9 +744,13 @@
 
     async function tick() {
         if (!window.chessHelper?.autoPlay || running) return;
+        running = true;
 
         const fen = getFEN();
-        if (!fen) return;
+        if (!fen) {
+            running = false;
+            return;
+        }
 
         const turn = fen.split(' ')[1];
         const me   = myColor();
@@ -693,18 +767,18 @@
                     if (a.best && getFEN() === snap) prefetch = { fen: snap, data: a };
                 });
             }
+            running = false;
             return;
         }
-        if (fen === lastFen) return;
+        if (fen === lastFen) {
+            running = false;
+            return;
+        }
 
-        running  = true;
-
-        // Ждем 12 мс для стабилизации доски (чтобы избежать парсинга промежуточных анимаций)
         await sleep(12);
         const stableFen = getFEN();
         if (stableFen !== fen) {
             running = false;
-            // Доска еще меняется, попробуем снова через 5мс
             setTimeout(tick, 5);
             return;
         }
@@ -722,11 +796,14 @@
             if (!bk) {
                 let currentDepth = cfg.depth;
                 if (cfg.bulletMode) {
-                    currentDepth = 5; // Мгновенный расчет для режима пули!
+                    currentDepth = 5;
                 } else if (cfg.randDepthEnabled) {
                     currentDepth = clamp(cfg.depth + rndInt(-2, 2), 3, 10);
                 }
+                state.depth = currentDepth;
                 engine = (prefetch?.fen === stableFen) ? prefetch.data : await analyze(stableFen, currentDepth);
+            } else {
+                state.depth = 0;
             }
             prefetch = null;
 
@@ -737,6 +814,7 @@
             }
 
             const chosen  = bk || engine.best;
+            state.bestMove = chosen;
             const fromSq  = chosen.slice(0, 2);
             const toSq    = chosen.slice(2, 4);
             const recap   = state.lastWasCapture && oppPieceAt(toSq);
@@ -815,32 +893,46 @@
         const parts = fen.split(' ');
         const piecesKey = parts[0];
         
-        const isStartPos = piecesKey === 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
-        if (isStartPos) {
-            window.chessHelperGameFENs = [fen];
-            await chrome.storage.local.set({ gameFens: [fen], gameId: getGameId() });
-        } else if (history.length === 0 || history[history.length - 1].split(' ')[0] !== piecesKey) {
-            history.push(fen);
-            await chrome.storage.local.set({ gameFens: history, gameId: getGameId() });
-        }
+        try {
+            const isStartPos = piecesKey === 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
+            if (isStartPos) {
+                window.chessHelperGameFENs = [fen];
+                await chrome.storage.local.set({ gameFens: [fen], gameId: getGameId() });
+            } else if (history.length === 0 || history[history.length - 1].split(' ')[0] !== piecesKey) {
+                history.push(fen);
+                await chrome.storage.local.set({ gameFens: history, gameId: getGameId() });
+            }
+        } catch (_) {}
     }
 
+    let observerTimeout = null;
     const observer = new MutationObserver(() => { 
-        checkNewGame();
-        checkGameOver();
-        recordFEN(getFEN());
-        if (window.chessHelper?.autoPlay) tick(); 
+        if (observerTimeout) clearTimeout(observerTimeout);
+        observerTimeout = setTimeout(() => {
+            checkNewGame();
+            checkGameOver();
+            recordFEN(getFEN());
+            if (window.chessHelper?.autoPlay) tick(); 
+        }, 50);
     });
 
     let lastObservedBoard = null;
+    let observerInterval = null;
     function attachObserver() {
-        const b = board();
-        if (b && b !== lastObservedBoard) {
-            try { observer.disconnect(); } catch (_) {}
-            observer.observe(b, { childList: true, subtree: true, attributes: true });
-            lastObservedBoard = b;
-        }
-        setTimeout(attachObserver, 1000);
+        if (observerInterval) return;
+        observerInterval = window.chessHelperIntervals.register('observer', () => {
+            const b = board();
+            if (b) {
+                if (b !== lastObservedBoard) {
+                    try { observer.disconnect(); } catch (_) {}
+                    observer.observe(b, { childList: true, subtree: true, attributes: true });
+                    lastObservedBoard = b;
+                }
+            } else if (lastObservedBoard) {
+                try { observer.disconnect(); } catch (_) {}
+                lastObservedBoard = null;
+            }
+        }, 1000);
     }
 
     async function loadConfigOnStartup() {
@@ -868,7 +960,7 @@
 
     async function init() {
         try {
-            // 1. Сначала загружаем FEN историю во избежание race condition
+            
             const currentGameId = getGameId();
             const res = await chrome.storage.local.get(['gameFens', 'gameId']);
             if (res.gameId === currentGameId && Array.isArray(res.gameFens)) {
@@ -879,18 +971,18 @@
             }
             console.log('[ch:engine] Loaded FEN history:', window.chessHelperGameFENs.length);
  
-            // 2. Инициализируем ID игры и ключи игроков
+            
             lastGameId = currentGameId;
             lastPlayersKey = getPlayersKey();
  
-            // 3. Загружаем конфиг
+            
             await loadConfigOnStartup();
  
-            // 4. Подключаем MutationObserver
+            
             attachObserver();
  
-            // 5. Запускаем периодический интервал считывания
-            setInterval(() => { 
+            
+            window.chessHelperIntervals.register('game_tick', () => { 
                 checkNewGame();
                 checkGameOver();
                 recordFEN(getFEN());
@@ -914,7 +1006,7 @@
         async hint(fen) {
             let currentDepth = cfg.depth;
             if (cfg.bulletMode) {
-                currentDepth = 5; // Мгновенный расчет для режима пули
+                currentDepth = 5; 
             } else if (cfg.randDepthEnabled) {
                 currentDepth = clamp(cfg.depth + rndInt(-2, 2), 3, 10);
             }
@@ -924,18 +1016,18 @@
 
         setElo(elo) {
             const targetElo = isNaN(parseInt(elo)) ? 1300 : parseInt(elo);
-            // Масштабируем коэффициент от 0 до 1 с учетом нового лимита в 2500 ELO
+            
             const t       = clamp((targetElo - 1000) / 1500, 0, 1);
             cfg.elo       = targetElo;
             
-            // Расширяем лимиты: глубина Stockfish теперь масштабируется от 3 до 16 plies
+            
             cfg.depth     = Math.round(3 + t * 13);
             
-            // Время на размышление (в мс): уменьшается на высоких ELO для супер-быстрой игры
+            
             cfg.thinkMin  = Math.round(Math.max(80, 320 - t * 240));
             cfg.thinkMax  = Math.round(Math.max(300, 2000 - t * 1700));
             
-            // Ошибки мыши (wobble): падают до 0 (идеальное ведение мыши)
+            
             cfg.wobble    = Math.max(0, 5 - t * 5);
             cfg.badHoverChance  = Math.max(0, 0.20 - t * 0.20);
             cfg.reconsiderChance = Math.max(0, 0.12 - t * 0.12);
@@ -962,12 +1054,13 @@
             }
         },
 
-        getState: () => ({ ...state, phase: gamePhase(getFEN() || '') }),
+        getState: () => ({ ...state, phase: gamePhase(getFEN() || ''), queueSize: pendingAnalyses.size }),
 
         reset() {
-            state = { moves: 0, halfMoves: 0, eval: 0, justBlundered: false, lastWasCapture: false, quickMoveStreak: 0, thinking: false, lastMove: null, gameEnded: false, distractionTriggeredThisGame: false };
+            state = { moves: 0, halfMoves: 0, eval: 0, justBlundered: false, lastWasCapture: false, quickMoveStreak: 0, thinking: false, lastMove: null, gameEnded: false, distractionTriggeredThisGame: false, depth: 0, bestMove: null };
             running = false; lastFen = ''; prefetch = null;
             clearCache();
+            pendingAnalyses.clear();
             window.dispatchEvent(new CustomEvent('ch:reset'));
         },
     };

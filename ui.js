@@ -2,6 +2,8 @@ window.chessHelper = { autoPlay: false, debug: false };
 
 const $ = id => document.getElementById(id);
 
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
 const TIERS = [
     [1000, 'Beginner 👶'],
     [1100, 'Casual 📈'],
@@ -52,6 +54,7 @@ const TRANSLATIONS = {
         reset: "Сброс",
         settings: "Настройки",
         telemetry: "Анонимная телеметрия",
+        debug_mode: "Debug Overlay в углу",
         profile: "Профиль поведения",
         custom_settings: "Ручные настройки",
         blunder_rate: "Частота ошибок",
@@ -111,6 +114,7 @@ const TRANSLATIONS = {
         reset: "Reset",
         settings: "Settings",
         telemetry: "Anonymous Telemetry",
+        debug_mode: "Debug Overlay",
         profile: "Human Profile",
         custom_settings: "Custom Controls",
         blunder_rate: "Blunder Rate",
@@ -171,7 +175,35 @@ let appConfig = {
     gameHistory: [],
     rageMode: false,
     bulletMode: false,
-    autoNewGame: false
+    autoNewGame: false,
+    debugMode: false,
+    theme: 'midnight',
+    statAnalyses: 0,
+    statTotalSearchTime: 0,
+    statTotalDepth: 0,
+    statMovesPlayed: 0,
+    debugCollapsed: false,
+    debugTransparent: false,
+    debugPos: null,
+    statTotalAccuracy: 0,
+    statAccuracyCount: 0,
+    commandPaletteEnabled: true,
+    devVerboseLogs: false,
+    devEngineConsole: false,
+    devPerformanceMetrics: false,
+    devDomInspector: false,
+    devExperimentalFeatures: false,
+    debugShowBestMove: true,
+    debugShowEval: true,
+    debugShowFps: true,
+    debugShowHumanizer: true,
+    debugShowMemory: true,
+    activeProfile: 'default',
+    profiles: {
+        default: { blunders: 0.04, mouseSpeed: 1.0, thinkVariance: 1.0, bulletMode: false },
+        blitz: { blunders: 0.02, mouseSpeed: 1.4, thinkVariance: 0.6, bulletMode: false },
+        bullet: { blunders: 0.0, mouseSpeed: 2.0, thinkVariance: 0.2, bulletMode: true }
+    }
 };
 
 function t(key) {
@@ -186,7 +218,29 @@ async function init() {
         const stored = await chrome.storage.local.get(['appConfig']);
         if (stored.appConfig) {
             appConfig = { ...appConfig, ...stored.appConfig };
+            if (appConfig.uiStyle) {
+                delete appConfig.uiStyle;
+            }
+            if (appConfig.sandboxEndTime) {
+                delete appConfig.sandboxEndTime;
+            }
+            if (appConfig.sandboxEnabled) {
+                delete appConfig.sandboxEnabled;
+            }
+            if (appConfig.theme === 'cyber') {
+                appConfig.theme = 'midnight';
+            }
+            await chrome.storage.local.set({ appConfig });
         }
+
+        const sessionData = await chrome.storage.local.get(['sessionActive']);
+        if (sessionData.sessionActive) {
+            setTimeout(showCrashRecoveryModal, 1000);
+        }
+        await chrome.storage.local.set({ sessionActive: true });
+        window.addEventListener('beforeunload', () => {
+            chrome.storage.local.set({ sessionActive: false });
+        });
 
         if (typeof appConfig.elo !== 'number' || isNaN(appConfig.elo)) {
             appConfig.elo = 1300;
@@ -226,8 +280,13 @@ async function init() {
             panel.innerHTML = panelHTML();
         }
 
-        root.append(bubble, panel);
+        const debugOverlay = el('div', { id: 'ch-debug-overlay', className: 'hidden' });
+        root.append(bubble, panel, debugOverlay);
         document.body.appendChild(root);
+
+        applyTheme();
+        positionDebugOverlay();
+        bindDebugOverlayDrag(debugOverlay);
 
         injectStyles();
         bindDrag();
@@ -241,8 +300,8 @@ async function init() {
             syncModeUI();
         }
 
-        setInterval(syncColor,  1800);
-        setInterval(syncStats,  2200);
+        window.chessHelperIntervals.register('sync_color', syncColor, 1800);
+        window.chessHelperIntervals.register('sync_stats', syncStats, 2200);
 
         window.addEventListener('ch:thinking', e => onThinking(e.detail));
         window.addEventListener('ch:move',     e => logMove(e.detail));
@@ -289,6 +348,25 @@ async function init() {
                 });
             }
         });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.shiftKey && e.code === 'KeyD') {
+                e.preventDefault();
+                appConfig.debugMode = !appConfig.debugMode;
+                saveSettings();
+                const chk = $('set-debug-mode');
+                if (chk) chk.checked = appConfig.debugMode;
+                applyConfigToEngine();
+                updateDebugOverlay();
+            }
+            if (appConfig.commandPaletteEnabled !== false && e.ctrlKey && e.shiftKey && e.code === 'KeyP') {
+                e.preventDefault();
+                showCommandPalette();
+            }
+        });
+
+        fpsLoop();
+        window.chessHelperIntervals.register('debug_overlay', updateDebugOverlay, 250);
     } catch (e) {
         console.error('[ch:ui] Init error caught: ', e);
     }
@@ -370,6 +448,7 @@ function panelHTML() {
         <button class="ch-mode-tab${!appConfig.rageMode ? ' active' : ''}" id="tab-mode-regular">${t('mode_regular')}</button>
         <button class="ch-mode-tab${appConfig.rageMode ? ' active' : ''}" id="tab-mode-rage">${t('mode_rage')}</button>
         <button class="ch-mode-tab" id="tab-mode-analysis">${appConfig.lang === 'ru' ? 'Анализ' : 'Analysis'}</button>
+        <button class="ch-mode-tab" id="tab-mode-developer">${appConfig.lang === 'ru' ? 'Разработчик' : 'Dev'}</button>
     </div>
 
     <div id="ch-color-strip">
@@ -551,6 +630,38 @@ function panelHTML() {
         </div>
     </div>
 
+    <div id="ch-developer-panel" class="hidden" style="padding:12px 18px;display:flex;flex-direction:column;gap:12px;">
+        <div class="developer-settings" style="display:flex;flex-direction:column;gap:6px;background:rgba(0,0,0,0.2);border:1px solid var(--border);border-radius:14px;padding:12px;">
+            <label class="switch-row" style="font-size:11px;display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;color:var(--text-sub);">
+                <span>Verbose Logs</span>
+                <input type="checkbox" id="set-dev-verbose-logs">
+            </label>
+            <label class="switch-row" style="font-size:11px;display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;color:var(--text-sub);">
+                <span>Engine Console</span>
+                <input type="checkbox" id="set-dev-engine-console">
+            </label>
+            <label class="switch-row" style="font-size:11px;display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;color:var(--text-sub);">
+                <span>Performance Metrics</span>
+                <input type="checkbox" id="set-dev-performance-metrics">
+            </label>
+            <label class="switch-row" style="font-size:11px;display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;color:var(--text-sub);">
+                <span>DOM Inspector</span>
+                <input type="checkbox" id="set-dev-dom-inspector">
+            </label>
+            <label class="switch-row" style="font-size:11px;display:flex;justify-content:space-between;align-items:center;color:var(--text-sub);">
+                <span>Experimental Features</span>
+                <input type="checkbox" id="set-dev-experimental-features">
+            </label>
+        </div>
+        
+        <div id="ch-dev-console-container" class="hidden" style="display:flex;flex-direction:column;gap:4px;">
+            <div style="font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Engine Console</div>
+            <div id="ch-dev-console" style="width:100%;height:100px;background:#000;border:1px solid var(--border);border-radius:8px;padding:8px;overflow-y:auto;font-family:monospace;font-size:8px;color:#0df5a3;white-space:pre-wrap;word-break:break-all;">
+                <div>Console ready.</div>
+            </div>
+        </div>
+    </div>
+
     <div id="ch-footer">
         <a href="https://github.com/physicalaff/Knight-Chess-Helper" target="_blank" id="ch-github-link">
             <img src="${githubIconUrl}" id="ch-github-icon" />
@@ -591,6 +702,15 @@ function panelHTML() {
                 <option value="aggressive">Aggressive</option>
                 <option value="positional">Positional</option>
                 <option value="custom">Custom</option>
+            </select>
+        </div>
+
+        <div class="settings-group">
+            <label class="settings-label">${appConfig.lang === 'ru' ? 'Тема оформления' : 'Theme'}</label>
+            <select id="set-ui-theme" class="settings-select">
+                <option value="midnight">Midnight 🌌</option>
+                <option value="minimal">Minimalist 📃</option>
+                <option value="system">System Theme 💻</option>
             </select>
         </div>
 
@@ -644,9 +764,14 @@ function panelHTML() {
 
         <div class="settings-group">
             <label class="settings-label">${t('stats')}</label>
-            <div class="stats-grid">
+            <div class="stats-grid" style="display:grid;grid-template-columns:1fr;gap:6px;">
                 <div><span>${t('winrate')}:</span> <strong id="stat-winrate">0%</strong></div>
-                <div><span>${t('moves')}:</span> <strong id="stat-games">0</strong></div>
+                <div><span>${appConfig.lang === 'ru' ? 'Игр сыграно' : 'Games played'}:</span> <strong id="stat-games">0</strong></div>
+                <div><span>${appConfig.lang === 'ru' ? 'Всего анализов' : 'Total analyses'}:</span> <strong id="stat-analyses-cnt">0</strong></div>
+                <div><span>${appConfig.lang === 'ru' ? 'Ср. время поиска' : 'Avg search time'}:</span> <strong id="stat-avg-search">0ms</strong></div>
+                <div><span>${appConfig.lang === 'ru' ? 'Ср. глубина расчета' : 'Avg calculation depth'}:</span> <strong id="stat-avg-depth">0</strong></div>
+                <div><span>${appConfig.lang === 'ru' ? 'Сыграно ходов' : 'Moves played'}:</span> <strong id="stat-moves-cnt">0</strong></div>
+                <div><span>${appConfig.lang === 'ru' ? 'Ср. точность движка' : 'Avg engine accuracy'}:</span> <strong id="stat-avg-accuracy">0%</strong></div>
             </div>
         </div>
 
@@ -679,12 +804,68 @@ function panelHTML() {
                 <span>${t('auto_new_game')}</span>
                 <input type="checkbox" id="set-auto-new-game">
             </label>
+            <label class="switch-row">
+                <span>${t('debug_mode')}</span>
+                <input type="checkbox" id="set-debug-mode">
+            </label>
+            <div id="debug-fields-container" class="hidden" style="padding-left:16px;margin-top:4px;display:flex;flex-direction:column;gap:4px;border-left:1px solid var(--border);">
+                <label class="switch-row" style="font-size:10px;margin:0;padding:2px 0;">
+                    <span>Best Move</span>
+                    <input type="checkbox" id="set-debug-best-move">
+                </label>
+                <label class="switch-row" style="font-size:10px;margin:0;padding:2px 0;">
+                    <span>Evaluation</span>
+                    <input type="checkbox" id="set-debug-eval">
+                </label>
+                <label class="switch-row" style="font-size:10px;margin:0;padding:2px 0;">
+                    <span>FPS</span>
+                    <input type="checkbox" id="set-debug-fps">
+                </label>
+                <label class="switch-row" style="font-size:10px;margin:0;padding:2px 0;">
+                    <span>Humanizer</span>
+                    <input type="checkbox" id="set-debug-humanizer">
+                </label>
+                <label class="switch-row" style="font-size:10px;margin:0;padding:2px 0;">
+                    <span>Memory</span>
+                    <input type="checkbox" id="set-debug-memory">
+                </label>
+            </div>
+        </div>
+
+        <div class="settings-group">
+            <label class="settings-label">${appConfig.lang === 'ru' ? 'Профиль настроек' : 'Settings Profile'}</label>
+            <select id="set-profile" class="settings-select">
+                <option value="default">Default</option>
+                <option value="blitz">Blitz</option>
+                <option value="bullet">Bullet</option>
+            </select>
+            <div style="display:flex;gap:6px;margin-top:6px;">
+                <button class="settings-btn" id="btn-save-profile" style="flex:1;font-size:10px;padding:4px 8px;">${appConfig.lang === 'ru' ? 'Сохранить текущий' : 'Save Current'}</button>
+            </div>
+        </div>
+
+        <div class="settings-group" id="settings-preview-group">
+            <label class="settings-label">${appConfig.lang === 'ru' ? 'Предпросмотр движения' : 'Movement Preview'}</label>
+            <div id="settings-preview-canvas-container" style="position:relative;width:100%;height:60px;background:rgba(0,0,0,0.25);border:1px solid var(--border);border-radius:12px;overflow:hidden;cursor:pointer;">
+                <div id="settings-preview-dot" style="position:absolute;left:10px;top:25px;width:10px;height:10px;background:#0df5a3;border-radius:50%;box-shadow:0 0 8px #0df5a3;transition:transform 0.1s linear;"></div>
+                <div style="position:absolute;bottom:4px;right:6px;font-size:8px;color:var(--text-muted);">${appConfig.lang === 'ru' ? 'Кликните для теста' : 'Click to test'}</div>
+            </div>
+        </div>
+
+        <div class="settings-group">
+            <label class="settings-label">${appConfig.lang === 'ru' ? 'Лог ошибок' : 'Error Log'}</label>
+            <div id="settings-error-log" style="width:100%;max-height:80px;background:rgba(0,0,0,0.3);border-radius:8px;padding:6px;overflow-y:auto;font-family:monospace;font-size:8px;color:#ff5555;border:1px solid rgba(255,51,102,0.1);white-space:pre-wrap;word-break:break-all;">
+                <div style="color:var(--text-muted);">${appConfig.lang === 'ru' ? 'Ошибок не зафиксировано' : 'No errors logged'}</div>
+            </div>
+            <button class="settings-btn" id="btn-clear-errors" style="margin-top:4px;font-size:9px;padding:2px 6px;">${appConfig.lang === 'ru' ? 'Очистить лог' : 'Clear Log'}</button>
         </div>
 
         <div class="settings-buttons">
             <button class="settings-btn" id="btn-export">${t('export')}</button>
             <button class="settings-btn" id="btn-import">${t('import')}</button>
-            <button class="settings-btn settings-btn-danger" id="btn-reset-all">${t('reset_all')}</button>
+            <button class="settings-btn" id="btn-backup-settings">${appConfig.lang === 'ru' ? 'Бэкап' : 'Backup'}</button>
+            <button class="settings-btn" id="btn-restore-settings">${appConfig.lang === 'ru' ? 'Восст.' : 'Restore'}</button>
+            <button class="settings-btn settings-btn-danger" id="btn-reset-all" style="width:100%;margin-top:4px;">${t('reset_all')}</button>
         </div>
     </div>
 </div>
@@ -695,23 +876,7 @@ function panelHTML() {
     `.trim();
 }
 
-function switchTab(mode) {
-    const tabs = document.querySelectorAll('.ch-mode-tab');
-    tabs.forEach(t => t.classList.remove('active'));
 
-    const normal = $('ch-normal-controls');
-    const analysis = $('ch-analysis-panel');
-
-    if (mode === 'analysis') {
-        $('tab-mode-analysis').classList.add('active');
-        normal.classList.add('hidden');
-        analysis.classList.remove('hidden');
-    } else {
-        $(`tab-mode-${mode}`).classList.add('active');
-        normal.classList.remove('hidden');
-        analysis.classList.add('hidden');
-    }
-}
 
 function playSound(filename) {
     chrome.runtime.sendMessage({
@@ -804,6 +969,14 @@ function applyConfigToEngine() {
         misclicksEnabled: appConfig.misclicksEnabled,
         bulletMode: appConfig.bulletMode
     });
+    const overlay = document.getElementById('ch-debug-overlay');
+    if (overlay) {
+        if (appConfig.debugMode) {
+            overlay.classList.remove('hidden');
+        } else {
+            overlay.classList.add('hidden');
+        }
+    }
 }
 
 function switchView(fromId, toId) {
@@ -825,9 +998,9 @@ function switchView(fromId, toId) {
 
 function bindEvents() {
     $('ch-close').onclick = closePanel;
-    $('ch-settings-btn').onclick = () => {
+    $('ch-settings-btn').onclick = async () => {
         switchView('ch-main-view', 'ch-settings-view');
-        loadSettingsView();
+        await loadSettingsView();
     };
     $('ch-settings-back').onclick = () => {
         switchView('ch-settings-view', 'ch-main-view');
@@ -961,7 +1134,7 @@ function bindEvents() {
 
     $('ch-log-clear').onclick = () => { moveLog.length = 0; renderLog(); };
 
-    // Клик на запуск Глубокого Анализа партии
+    
     const startAnalysisBtn = $('ch-start-analysis-btn');
     if (startAnalysisBtn) {
             startAnalysisBtn.onclick = async () => {
@@ -998,7 +1171,7 @@ function bindEvents() {
             };
 
             const total = fens.length;
-            let prevEval = 0.3; // Стандартное начало
+            let prevEval = 0.3; 
 
             for (let i = 0; i < total; i++) {
                 const pct = Math.round((i / total) * 100);
@@ -1023,7 +1196,7 @@ function bindEvents() {
                         diff = prevEval - currentEval;
                     }
 
-                    const cpl = Math.max(0, -diff * 100); // centipawn loss
+                    const cpl = Math.max(0, -diff * 100); 
                     if (prevActiveCol === 'w') {
                         whiteCPLSum += cpl;
                         whiteMovesCount++;
@@ -1072,7 +1245,7 @@ function bindEvents() {
                 prevEval = currentEval;
             }
 
-            // Вычисляем точность по ACPL
+            
             const whiteAcc = whiteMovesCount > 0 ? Math.round(Math.max(0, Math.min(100, 100 - (whiteCPLSum / whiteMovesCount) * 0.45))) : 100;
             const blackAcc = blackMovesCount > 0 ? Math.round(Math.max(0, Math.min(100, 100 - (blackCPLSum / blackMovesCount) * 0.45))) : 100;
 
@@ -1098,7 +1271,7 @@ function bindEvents() {
                 };
                 return `
                     <div class="ch-analysis-move-row ${m.cls}" data-move-best="${m.bestMove}">
-                        <span class="ch-an-move-text">${m.notation}</span>
+                        <span class="ch-an-move-text">${esc(m.notation)}</span>
                         <span class="ch-an-move-badge ${m.cls}">${classLabels[m.cls]}</span>
                         <span class="ch-an-move-eval">${m.eval > 0 ? '+' : ''}${m.eval.toFixed(1)}</span>
                     </div>
@@ -1117,33 +1290,74 @@ function bindEvents() {
             startAnalysisBtn.classList.remove('hidden');
         };
     }
+
+    const tabDevEl = $('tab-mode-developer');
+    if (tabDevEl) {
+        tabDevEl.onclick = () => {
+            switchTab('developer');
+        };
+    }
+
+    const devToggle = (id, key) => {
+        const el = $(id);
+        if (el) {
+            el.checked = !!appConfig[key];
+            el.onchange = (e) => {
+                appConfig[key] = e.target.checked;
+                saveSettings();
+                if (key === 'devEngineConsole') {
+                    const devConsoleCont = $('ch-dev-console-container');
+                    if (devConsoleCont) devConsoleCont.classList.toggle('hidden', !appConfig.devEngineConsole);
+                }
+            };
+        }
+    };
+    devToggle('set-dev-verbose-logs', 'devVerboseLogs');
+    devToggle('set-dev-engine-console', 'devEngineConsole');
+    devToggle('set-dev-performance-metrics', 'devPerformanceMetrics');
+    devToggle('set-dev-dom-inspector', 'devDomInspector');
+    devToggle('set-dev-experimental-features', 'devExperimentalFeatures');
+
+    const devConsoleCont = $('ch-dev-console-container');
+    if (devConsoleCont) {
+        devConsoleCont.classList.toggle('hidden', !appConfig.devEngineConsole);
+    }
 }
 
 function switchTab(tab) {
     const tabReg = $('tab-mode-regular');
     const tabRage = $('tab-mode-rage');
     const tabAn = $('tab-mode-analysis');
+    const tabDev = $('tab-mode-developer');
     
     if (tabReg && tabRage && tabAn) {
         tabReg.classList.toggle('active', tab === 'regular');
         tabRage.classList.toggle('active', tab === 'rage');
         tabAn.classList.toggle('active', tab === 'analysis');
+        if (tabDev) tabDev.classList.toggle('active', tab === 'developer');
     }
 
     const normalControls = $('ch-normal-controls');
     const analysisPanel = $('ch-analysis-panel');
+    const devPanel = $('ch-developer-panel');
 
     if (tab === 'analysis') {
         if (normalControls) normalControls.classList.add('hidden');
         if (analysisPanel) analysisPanel.classList.remove('hidden');
+        if (devPanel) devPanel.classList.add('hidden');
+    } else if (tab === 'developer') {
+        if (normalControls) normalControls.classList.add('hidden');
+        if (analysisPanel) analysisPanel.classList.add('hidden');
+        if (devPanel) devPanel.classList.remove('hidden');
     } else {
         if (normalControls) normalControls.classList.remove('hidden');
         if (analysisPanel) analysisPanel.classList.add('hidden');
+        if (devPanel) devPanel.classList.add('hidden');
         syncModeUI();
     }
 }
 
-function loadSettingsView() {
+async function loadSettingsView() {
     $('set-lang').value = appConfig.lang;
     $('set-preset').value = appConfig.preset;
     $('set-rand-depth').checked = appConfig.randDepthEnabled;
@@ -1158,6 +1372,8 @@ function loadSettingsView() {
     $('set-mute-greeting').checked = appConfig.muteGreetingSound;
     $('set-mute-sf').checked = appConfig.muteSfMusic;
     $('set-auto-new-game').checked = appConfig.autoNewGame;
+    $('set-debug-mode').checked = appConfig.debugMode || false;
+    $('set-ui-theme').value = appConfig.theme || 'midnight';
 
     $('ch-bullet-toggle').checked = appConfig.bulletMode;
     $('ch-bullet-indicator').classList.toggle('active', appConfig.bulletMode);
@@ -1169,7 +1385,6 @@ function loadSettingsView() {
 
     syncSlidersUI();
 
-    // Смена языка в настройках на лету
     $('set-lang').onchange = async (e) => {
         appConfig.lang = e.target.value;
         await chrome.storage.local.set({ appConfig });
@@ -1179,7 +1394,7 @@ function loadSettingsView() {
         syncModeUI();
         $('ch-main-view').classList.add('hidden');
         $('ch-settings-view').classList.remove('hidden');
-        loadSettingsView();
+        await loadSettingsView();
     };
 
     $('set-preset').onchange = (e) => {
@@ -1202,6 +1417,12 @@ function loadSettingsView() {
                 appConfig.thinkVariance = p.variance;
             }
         }
+        saveSettings();
+    };
+
+    $('set-ui-theme').onchange = (e) => {
+        appConfig.theme = e.target.value;
+        applyTheme();
         saveSettings();
     };
 
@@ -1253,6 +1474,11 @@ function loadSettingsView() {
                     playSound('sf.mp3');
                 }
             }
+            if (key === 'debugMode') {
+                const df = $('debug-fields-container');
+                if (df) df.classList.toggle('hidden', !appConfig.debugMode);
+                updateDebugOverlay();
+            }
             saveSettings();
         };
     };
@@ -1269,11 +1495,127 @@ function loadSettingsView() {
     toggleSet('set-mute-greeting', 'muteGreetingSound');
     toggleSet('set-mute-sf', 'muteSfMusic');
     toggleSet('set-auto-new-game', 'autoNewGame');
+    toggleSet('set-debug-mode', 'debugMode');
 
-    const statsData = window.chessHelperStats?.getStats() || { wins: 0, games: 0, history: [] };
+    const statsData = (await window.chessHelperStats?.getStats()) || { wins: 0, games: 0, history: [] };
     $('stat-games').textContent = statsData.games;
     const wr = statsData.games > 0 ? Math.round((statsData.wins / statsData.games) * 100) : 0;
     $('stat-winrate').textContent = `${wr}%`;
+
+    const analysesCount = appConfig.statAnalyses || 0;
+    const movesPlayed = appConfig.statMovesPlayed || 0;
+    const avgSearch = analysesCount > 0 ? Math.round((appConfig.statTotalSearchTime || 0) / analysesCount) : 0;
+    const avgDepth = analysesCount > 0 ? Math.round((appConfig.statTotalDepth || 0) / analysesCount) : 0;
+    const avgAccuracy = appConfig.statAccuracyCount > 0 ? Math.round((appConfig.statTotalAccuracy || 0) / appConfig.statAccuracyCount) : 100;
+
+    $('stat-analyses-cnt').textContent = analysesCount;
+    $('stat-avg-search').textContent = `${avgSearch}ms`;
+    $('stat-avg-depth').textContent = avgDepth;
+    $('stat-moves-cnt').textContent = movesPlayed;
+    $('stat-avg-accuracy').textContent = `${avgAccuracy}%`;
+
+    $('set-debug-best-move').checked = appConfig.debugShowBestMove !== false;
+    $('set-debug-eval').checked = appConfig.debugShowEval !== false;
+    $('set-debug-fps').checked = appConfig.debugShowFps !== false;
+    $('set-debug-humanizer').checked = appConfig.debugShowHumanizer !== false;
+    $('set-debug-memory').checked = appConfig.debugShowMemory !== false;
+
+    toggleSet('set-debug-best-move', 'debugShowBestMove');
+    toggleSet('set-debug-eval', 'debugShowEval');
+    toggleSet('set-debug-fps', 'debugShowFps');
+    toggleSet('set-debug-humanizer', 'debugShowHumanizer');
+    toggleSet('set-debug-memory', 'debugShowMemory');
+
+    $('debug-fields-container').classList.toggle('hidden', !appConfig.debugMode);
+
+    $('set-profile').value = appConfig.activeProfile || 'default';
+    $('set-profile').onchange = (e) => {
+        appConfig.activeProfile = e.target.value;
+        const prof = appConfig.profiles[appConfig.activeProfile];
+        if (prof) {
+            appConfig.blunders = prof.blunders;
+            appConfig.mouseSpeed = prof.mouseSpeed;
+            appConfig.thinkVariance = prof.thinkVariance;
+            appConfig.bulletMode = prof.bulletMode;
+            applyConfigToEngine();
+            loadSettingsView();
+        }
+        saveSettings();
+    };
+
+    $('btn-save-profile').onclick = () => {
+        const active = appConfig.activeProfile || 'default';
+        appConfig.profiles[active] = {
+            blunders: appConfig.blunders,
+            mouseSpeed: appConfig.mouseSpeed,
+            thinkVariance: appConfig.thinkVariance,
+            bulletMode: appConfig.bulletMode
+        };
+        saveSettings();
+        showNotification('Profile updated successfully', 'success');
+    };
+
+    const previewBox = $('settings-preview-canvas-container');
+    const previewDot = $('settings-preview-dot');
+    if (previewBox && previewDot) {
+        previewBox.onclick = () => {
+            let start = null;
+            const duration = 1500 / (appConfig.mouseSpeed || 1);
+            const wobbleAmt = (appConfig.thinkVariance || 1) * 8;
+            function animatePreview(timestamp) {
+                if (!start) start = timestamp;
+                const progress = (timestamp - start) / duration;
+                if (progress < 1) {
+                    const x = 10 + progress * (previewBox.clientWidth - 30);
+                    const y = 25 + Math.sin(progress * Math.PI * 6) * wobbleAmt * Math.sin(progress * Math.PI);
+                    previewDot.style.left = `${x}px`;
+                    previewDot.style.top = `${y}px`;
+                    requestAnimationFrame(animatePreview);
+                } else {
+                    previewDot.style.left = '10px';
+                    previewDot.style.top = '25px';
+                }
+            }
+            requestAnimationFrame(animatePreview);
+        };
+    }
+
+    const errorLogEl = $('settings-error-log');
+    if (errorLogEl) {
+        const errors = window.chessHelperErrors || [];
+        if (errors.length > 0) {
+            errorLogEl.innerHTML = errors.map(e => `[${e.time}] ${e.message}`).join('<br>');
+        }
+    }
+    $('btn-clear-errors').onclick = () => {
+        window.chessHelperErrors = [];
+        if (errorLogEl) errorLogEl.innerHTML = `<div style="color:var(--text-muted);">${appConfig.lang === 'ru' ? 'Ошибок не зафиксировано' : 'No errors logged'}</div>`;
+    };
+
+    $('btn-backup-settings').onclick = async () => {
+        try {
+            await chrome.storage.local.set({ appConfigBackup: appConfig });
+            showNotification('Settings backup created', 'success');
+        } catch (e) {
+            console.error(e);
+        }
+    };
+    $('btn-restore-settings').onclick = async () => {
+        try {
+            const data = await chrome.storage.local.get(['appConfigBackup']);
+            if (data.appConfigBackup) {
+                appConfig = data.appConfigBackup;
+                await chrome.storage.local.set({ appConfig });
+                applyConfigToEngine();
+                await loadSettingsView();
+                showNotification('Settings backup restored', 'success');
+            } else {
+                showNotification('No backup found', 'error');
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    };
 
     $('btn-export').onclick = () => {
         const str = JSON.stringify(appConfig, null, 2);
@@ -1292,10 +1634,34 @@ function loadSettingsView() {
             reader.onload = async (evt) => {
                 try {
                     const parsed = JSON.parse(evt.target.result);
-                    appConfig = { ...appConfig, ...parsed };
+                    if (parsed && typeof parsed === 'object') {
+                        if (typeof parsed.elo === 'number' && !isNaN(parsed.elo)) appConfig.elo = parsed.elo;
+                        if (typeof parsed.blunders === 'number' && !isNaN(parsed.blunders)) appConfig.blunders = parsed.blunders;
+                        if (typeof parsed.mouseSpeed === 'number' && !isNaN(parsed.mouseSpeed)) appConfig.mouseSpeed = parsed.mouseSpeed;
+                        if (typeof parsed.thinkVariance === 'number' && !isNaN(parsed.thinkVariance)) appConfig.thinkVariance = parsed.thinkVariance;
+                        if (typeof parsed.games === 'number' && !isNaN(parsed.games)) appConfig.games = parsed.games;
+                        if (typeof parsed.wins === 'number' && !isNaN(parsed.wins)) appConfig.wins = parsed.wins;
+                        if (typeof parsed.lang === 'string') appConfig.lang = parsed.lang;
+                        if (typeof parsed.preset === 'string') appConfig.preset = parsed.preset;
+                        if (typeof parsed.telemetryEnabled === 'boolean') appConfig.telemetryEnabled = parsed.telemetryEnabled;
+                        if (typeof parsed.randDepthEnabled === 'boolean') appConfig.randDepthEnabled = parsed.randDepthEnabled;
+                        if (typeof parsed.fatigueEnabled === 'boolean') appConfig.fatigueEnabled = parsed.fatigueEnabled;
+                        if (typeof parsed.distractionsEnabled === 'boolean') appConfig.distractionsEnabled = parsed.distractionsEnabled;
+                        if (typeof parsed.ponderingEnabled === 'boolean') appConfig.ponderingEnabled = parsed.ponderingEnabled;
+                        if (typeof parsed.misclicksEnabled === 'boolean') appConfig.misclicksEnabled = parsed.misclicksEnabled;
+                        if (typeof parsed.sfMode === 'boolean') appConfig.sfMode = parsed.sfMode;
+                        if (typeof parsed.muteVictorySound === 'boolean') appConfig.muteVictorySound = parsed.muteVictorySound;
+                        if (typeof parsed.muteGreetingSound === 'boolean') appConfig.muteGreetingSound = parsed.muteGreetingSound;
+                        if (typeof parsed.muteSfMusic === 'boolean') appConfig.muteSfMusic = parsed.muteSfMusic;
+                        if (typeof parsed.darkTheme === 'boolean') appConfig.darkTheme = parsed.darkTheme;
+                        if (typeof parsed.rageMode === 'boolean') appConfig.rageMode = parsed.rageMode;
+                        if (typeof parsed.bulletMode === 'boolean') appConfig.bulletMode = parsed.bulletMode;
+                        if (typeof parsed.autoNewGame === 'boolean') appConfig.autoNewGame = parsed.autoNewGame;
+                        if (Array.isArray(parsed.gameHistory)) appConfig.gameHistory = parsed.gameHistory;
+                    }
                     await chrome.storage.local.set({ appConfig });
                     applyConfigToEngine();
-                    loadSettingsView();
+                    await loadSettingsView();
                     root.classList.toggle('light-theme', !appConfig.darkTheme);
                     root.classList.toggle('sf-theme', appConfig.sfMode && appConfig.rageMode);
                 } catch (_) {
@@ -1358,7 +1724,7 @@ function syncModeUI() {
         }
     }
 
-    // Динамически перестраиваем ползунок ELO при переключении режима
+    
     const range = $('ch-elo-range');
     if (range) {
         if (isRage) {
@@ -1374,7 +1740,7 @@ function syncModeUI() {
             }
         }
         range.value = appConfig.elo;
-        // Программно вызываем input для пересчета стилей и заполнения прогресс-бара
+        
         range.dispatchEvent(new Event('input'));
     }
 
@@ -1426,9 +1792,9 @@ function renderLog() {
     if (!moveLog.length) { list.innerHTML = '<span class="ch-log-empty">No moves yet</span>'; return; }
     list.innerHTML = moveLog.slice(0, 6).map((m, i) => `
         <div class="ch-log-row ${i === 0 ? 'latest' : ''}">
-            <span class="ch-log-move">${m.move.toUpperCase()}</span>
+            <span class="ch-log-move">${esc(m.move.toUpperCase())}</span>
             ${m.book ? `<span class="ch-log-tag book">${t('book')}</span>` : ''}
-            <span class="ch-log-phase">${m.phase}</span>
+            <span class="ch-log-phase">${esc(m.phase)}</span>
         </div>
     `).join('');
 }
@@ -1461,15 +1827,15 @@ function renderHistory() {
         let changeTag = '';
         if (g.eloChange !== undefined && g.eloChange !== 0) {
             const isPlus = g.eloChange > 0;
-            changeTag = `<span class="ch-history-elo-change ${isPlus ? 'plus' : 'minus'}">${isPlus ? '+' : ''}${g.eloChange}</span>`;
+            changeTag = `<span class="ch-history-elo-change ${isPlus ? 'plus' : 'minus'}">${isPlus ? '+' : ''}${parseInt(g.eloChange)}</span>`;
         }
 
         return `
             <div class="ch-history-row">
                 <span class="ch-history-res ${resClass}">${resText}</span>
                 <span class="ch-history-color">${colorText}</span>
-                <span class="ch-history-elo">⚡ ${g.elo} ${changeTag}</span>
-                <span class="ch-history-date">${g.date}</span>
+                <span class="ch-history-elo">⚡ ${parseInt(g.elo)} ${changeTag}</span>
+                <span class="ch-history-date">${esc(g.date)}</span>
             </div>
         `;
     }).join('');
@@ -1562,7 +1928,7 @@ function onGameOverDetected(detail) {
         const modalText = String(detail?.modalText || '').toLowerCase();
         const docText = document.body.textContent.toLowerCase();
         
-        // 1. Извлекаем имена пользователей игроков
+        
         let myUsername = '';
         let opponentUsername = '';
         try {
@@ -1645,10 +2011,10 @@ function onGameOverDetected(detail) {
 
         let eloChange = 0;
         let finalElo = 0;
-        let outcome = 'DRAW'; // 'WIN', 'LOSS', 'DRAW'
+        let outcome = 'DRAW'; 
         let parsedOutcome = false;
 
-        // 2. Ищем все возможные контейнеры результатов окончания игры в DOM
+        
         const gameOverContainer = document.querySelector(
             '.game-over-modal-container, .board-modal-container, .game-over-header-component, ' + 
             '.board-modal-modal, .game-over-dialog, .game-over-modal, [data-behavior="game-over-modal"], ' +
@@ -1657,7 +2023,7 @@ function onGameOverDetected(detail) {
             '[class*="game-over-modal"], [class*="board-modal"], [data-testid*="game-over"]'
         ) || document;
 
-        // Ищем строки/блоки игроков в контейнере окончания игры
+        
         const playerRows = gameOverContainer.querySelectorAll(
             '.game-over-player-component, .game-over-player, .game-over-row, .game-over-player-row, ' +
             '.game-over-modal-player, .player-row, .game-over-player-row-component, .game-over-player-component-layout'
@@ -1675,7 +2041,7 @@ function onGameOverDetected(detail) {
             }
         }
 
-        // Если не нашли по нашему имени, пробуем исключить имя оппонента
+        
         if (!myRow && opponentUsername && playerRows.length > 0) {
             for (const row of playerRows) {
                 if (!row.textContent.toLowerCase().includes(opponentUsername.toLowerCase())) {
@@ -1696,7 +2062,7 @@ function onGameOverDetected(detail) {
             myRow = playerRows[0];
         }
 
-        // --- МЕТОД 0: Анализ заголовка модального окна (Быстро и надежно) ---
+        
         if (!parsedOutcome) {
             try {
                 const headerEl = document.querySelector(
@@ -1727,7 +2093,7 @@ function onGameOverDetected(detail) {
             } catch (_) {}
         }
 
-        // --- МЕТОД 1: Корона победителя (100% точность) ---
+        
         if (!parsedOutcome) {
             try {
                 let myCrown = false;
@@ -1751,7 +2117,7 @@ function onGameOverDetected(detail) {
             } catch (_) {}
         }
 
-        // --- МЕТОД 2: Классы победы на блоках игроков ---
+        
         if (!parsedOutcome) {
             try {
                 let myWinClass = false;
@@ -1777,7 +2143,7 @@ function onGameOverDetected(detail) {
             } catch (_) {}
         }
 
-        // --- МЕТОД 3: Считывание ELO изменений (+x / -x) ---
+        
         const targetContainer = myRow || gameOverContainer;
         const plusEl = targetContainer.querySelector('.rating-change-plus, .player-rating-change.plus, .player-rating-change-value.plus, .rating-change-up');
         const minusEl = targetContainer.querySelector('.rating-change-minus, .player-rating-change.minus, .player-rating-change-value.minus, .rating-change-down');
@@ -1809,7 +2175,7 @@ function onGameOverDetected(detail) {
             }
         }
 
-        // --- МЕТОД 4: Массивный словарь ключевых слов в заголовках и текстах (с учетом локали) ---
+        
         if (!parsedOutcome) {
             const textSources = [
                 document.querySelector('.game-over-header-title, .game-over-header, .game-over-title, .game-over-header-title-component')?.textContent,
@@ -1868,7 +2234,7 @@ function onGameOverDetected(detail) {
             }
         }
 
-        // --- МЕТОД 5: Парсинг по цвету фигур и тексту о победе цвета ---
+        
         if (!parsedOutcome) {
             const combinedText = docText + ' ' + modalText;
             const myColor = window.chessHelperEngine?.myColor() || 'w';
@@ -1887,7 +2253,7 @@ function onGameOverDetected(detail) {
             }
         }
 
-        // --- МЕТОД 6: Реверсивное ELO изменение оппонента ---
+        
         if (!parsedOutcome && oppRow) {
             const oppPlus = oppRow.querySelector('.rating-change-plus, .player-rating-change.plus, .player-rating-change-value.plus, .rating-change-up');
             const oppMinus = oppRow.querySelector('.rating-change-minus, .player-rating-change.minus, .player-rating-change-value.minus, .rating-change-down');
@@ -1909,7 +2275,7 @@ function onGameOverDetected(detail) {
             }
         }
 
-        // 5. Ищем итоговый рейтинг (Final ELO)
+        
         const ratingEl = targetContainer.querySelector('.user-tag-rating, .player-rating, .rating, .player-rating-value');
         if (ratingEl) {
             finalElo = parseInt(ratingEl.textContent.replace(/[^\d]/g, '')) || 0;
@@ -2160,7 +2526,7 @@ function injectStyles() {
 const STYLES = `
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=DM+Mono:wght@400;500&display=swap');
 
-/* Modern Web Guidance Scrollbars */
+
 ::-webkit-scrollbar {
     width: 6px !important;
     height: 6px !important;
@@ -2763,7 +3129,7 @@ const STYLES = `
 #ch-root.sf-theme .ch-arrow-line, #ch-root.rage-active .ch-arrow-line { stroke:#ff3366; }
 @keyframes dash { to { stroke-dashoffset:-8.5; } }
 
-/* Analysis Styles */
+
 #ch-analysis-panel { display:flex; flex-direction:column; gap:12px; }
 .ch-analysis-promo { font-size:11px; color:var(--text-sub); text-align:center; opacity:0.8; margin:0 0 4px 0; }
 .counter-row { padding:3px 6px; border-radius:6px; background:rgba(0,0,0,0.15); border:1px solid var(--border); }
@@ -2793,49 +3159,545 @@ const STYLES = `
 .ch-an-move-badge.mistake { background:rgba(249,115,22,0.15); color:#fb923c; }
 .ch-an-move-badge.blunder { background:rgba(239,68,68,0.15); color:#f87171; }
 .ch-an-move-eval { font-size:11px; font-weight:600; color:var(--text-muted); }
-`;
 
-function injectStyles() {
-    const s = document.createElement('style');
-    s.textContent = STYLES;
-    document.head.appendChild(s);
+#ch-debug-overlay {
+    position: fixed;
+    bottom: 16px;
+    left: 16px;
+    background: rgba(10, 11, 15, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    padding: 12px;
+    font-family: 'DM Mono', monospace !important;
+    font-size: 10px;
+    color: var(--text-sub);
+    z-index: 999999;
+    pointer-events: none;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+    backdrop-filter: blur(24px) saturate(180%);
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    transition: opacity 0.2s ease;
+}
+#ch-root.light-theme #ch-debug-overlay {
+    background: rgba(255, 255, 255, 0.82);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    color: var(--text-sub);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+}
+#ch-debug-overlay.hidden {
+    display: none !important;
+}
+#ch-debug-overlay {
+    opacity: 0.85;
+    pointer-events: auto !important;
+    cursor: grab;
+}
+#ch-debug-overlay:hover {
+    opacity: 1 !important;
+    background: rgba(10, 11, 15, 0.92) !important;
+}
+#ch-root.light-theme #ch-debug-overlay:hover {
+    background: rgba(255, 255, 255, 0.95) !important;
+}
+#ch-debug-overlay.transparent-mode {
+    background: rgba(10, 11, 15, 0.15);
+    border-color: rgba(255, 255, 255, 0.04);
+    opacity: 0.35;
+}
+#ch-debug-overlay.transparent-mode:hover {
+    background: rgba(10, 11, 15, 0.85) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    opacity: 1 !important;
+}
+#ch-root.light-theme #ch-debug-overlay.transparent-mode {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(0, 0, 0, 0.04);
+}
+#ch-root.light-theme #ch-debug-overlay.transparent-mode:hover {
+    background: rgba(255, 255, 255, 0.9) !important;
+    border-color: rgba(0, 0, 0, 0.08) !important;
 }
 
-const toggleSet = (id, key) => {
-    $(id).onchange = (e) => {
-        appConfig[key] = e.target.checked;
-        if (key === 'darkTheme') {
-            root.classList.toggle('light-theme', !appConfig.darkTheme);
-        }
-        if (key === 'sfMode') {
-            const isSfActive = appConfig.sfMode && appConfig.rageMode;
-            root.classList.toggle('sf-theme', isSfActive);
-            bubble.innerHTML = svgKnight();
-            const logoEl = $('ch-logo');
-            if (logoEl) logoEl.innerHTML = svgKnight();
-            
-            const avatarGif = $('ch-avatar-gif');
-            if (avatarGif) {
-                const gifFilename = isSfActive ? 'sf.gif' : (appConfig.lang === 'ru' ? 'ru.gif' : 'uk.gif');
-                avatarGif.src = chrome.runtime.getURL(`assets/${gifFilename}`);
-            }
+#ch-root.theme-midnight {
+    --bg: radial-gradient(circle at 50% 0%, oklch(0.16 0.03 260 / 0.95) 0%, oklch(0.09 0.02 260 / 0.98) 100%);
+    --border: oklch(1 0 0 / 0.08);
+    --border-glow: oklch(0.55 0.22 280 / 0.45);
+    --text: oklch(0.96 0.01 260);
+    --text-sub: oklch(0.82 0.03 260);
+    --text-muted: oklch(0.55 0.04 260);
+    --bg-strip: oklch(1 0 0 / 0.012);
+    --bg-item: oklch(1 0 0 / 0.04);
+    --btn-mode-bg: linear-gradient(135deg, oklch(0.65 0.22 280) 0%, oklch(0.48 0.18 280) 100%);
+    --btn-mode-shadow: oklch(0.65 0.22 280 / 0.35);
+}
 
-            if (isSfActive && !appConfig.muteSfMusic) {
-                playSound('sf.mp3');
-            } else {
-                chrome.runtime.sendMessage({ target: 'background', type: 'STOP_SOUND' });
-            }
-        }
-        if (key === 'muteSfMusic') {
-            if (appConfig.muteSfMusic) {
-                chrome.runtime.sendMessage({ target: 'background', type: 'STOP_SOUND' });
-            } else if (appConfig.sfMode && appConfig.rageMode) {
-                playSound('sf.mp3');
-            }
-        }
+#ch-root.theme-minimal {
+    --bg: #ffffff;
+    --border: rgba(0, 0, 0, 0.09);
+    --border-glow: #111827;
+    --text: #111827;
+    --text-sub: #374151;
+    --text-muted: #6b7280;
+    --bg-strip: rgba(0, 0, 0, 0.02);
+    --bg-item: rgba(0, 0, 0, 0.04);
+    --btn-mode-bg: #111827;
+    --btn-mode-shadow: rgba(0, 0, 0, 0.1);
+    --git-invert: 0;
+}
+@media (prefers-color-scheme: light) {
+    #ch-root.theme-system {
+        --bg: #ffffff;
+        --border: rgba(0, 0, 0, 0.09);
+        --border-glow: #111827;
+        --text: #111827;
+        --text-sub: #374151;
+        --text-muted: #6b7280;
+        --bg-strip: rgba(0, 0, 0, 0.02);
+        --bg-item: rgba(0, 0, 0, 0.04);
+        --btn-mode-bg: #111827;
+        --btn-mode-shadow: rgba(0, 0, 0, 0.1);
+        --git-invert: 0;
+    }
+}
+@media (prefers-color-scheme: dark) {
+    #ch-root.theme-system {
+        --bg: radial-gradient(circle at 50% 0%, oklch(0.18 0.04 250 / 0.95) 0%, oklch(0.12 0.02 250 / 0.98) 100%);
+        --border: oklch(1 0 0 / 0.08);
+        --border-glow: oklch(0.86 0.27 150 / 0.35);
+        --text: oklch(1 0 0);
+        --text-sub: oklch(0.88 0.02 240);
+        --text-muted: oklch(0.55 0.03 240);
+        --bg-strip: oklch(1 0 0 / 0.015);
+        --bg-item: oklch(1 0 0 / 0.05);
+        --btn-mode-bg: linear-gradient(135deg, oklch(0.86 0.27 150) 0%, oklch(0.62 0.22 150) 100%);
+        --btn-mode-shadow: oklch(0.86 0.27 150 / 0.35);
+    }
+}
+
+#ch-root.ch-modern-style #ch-panel {
+    border-radius: 16px !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: 0 32px 64px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.05) !important;
+    padding: 20px 0 !important;
+}
+#ch-root.ch-modern-style #ch-header {
+    padding: 12px 24px 16px !important;
+}
+#ch-root.ch-modern-style .control-card {
+    border-radius: 16px !important;
+    margin: 8px 24px 4px !important;
+    padding: 12px 16px !important;
+}
+#ch-root.ch-modern-style #ch-actions {
+    padding: 12px 24px !important;
+}
+#ch-root.ch-modern-style #ch-log-section,
+#ch-root.ch-modern-style #ch-history-section {
+    padding: 12px 24px !important;
+}
+#ch-root.ch-modern-style #ch-mode-tabs {
+    margin: 0 24px 10px !important;
+    border-radius: 12px !important;
+    padding: 2px !important;
+    background: rgba(0,0,0,0.2) !important;
+}
+#ch-root.ch-modern-style .ch-mode-tab {
+    border-radius: 10px !important;
+    padding: 8px 10px !important;
+}
+#ch-notification-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1000000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+}
+.ch-toast {
+    background: rgba(10, 11, 15, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #fff;
+    padding: 10px 16px;
+    border-radius: 12px;
+    font-family: 'Outfit', sans-serif;
+    font-size: 11px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    backdrop-filter: blur(12px);
+    opacity: 0;
+    transform: translateY(-20px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    pointer-events: auto;
+}
+.ch-toast.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+.ch-toast.info { border-left: 3px solid #60a5fa; }
+.ch-toast.success { border-left: 3px solid #0df5a3; }
+.ch-toast.error { border-left: 3px solid #ff3366; }
+#ch-crash-modal {
+    position: fixed;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(0,0,0,0.6);
+    z-index: 10000000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+#ch-command-palette {
+    position: fixed;
+    top: 20%;
+    left: 50%;
+    transform: translate(-50%, 0);
+    z-index: 10000000;
+}
+`;
+
+let fps = 60;
+let lastFpsTime = performance.now();
+let frameCount = 0;
+function fpsLoop() {
+    frameCount++;
+    const now = performance.now();
+    if (now >= lastFpsTime + 1000) {
+        fps = Math.round((frameCount * 1000) / (now - lastFpsTime));
+        frameCount = 0;
+        lastFpsTime = now;
+    }
+    requestAnimationFrame(fpsLoop);
+}
+
+function updateDebugOverlay() {
+    const overlay = $('ch-debug-overlay');
+    if (!overlay) return;
+    if (!appConfig.debugMode) {
+        overlay.classList.add('hidden');
+        return;
+    }
+    overlay.classList.remove('hidden');
+    
+    overlay.classList.toggle('transparent-mode', !!appConfig.debugTransparent);
+
+    const collapseSymbol = appConfig.debugCollapsed ? '+' : '−';
+    const transColor = appConfig.debugTransparent ? '#0df5a3' : 'var(--text-muted)';
+    
+    let headerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;font-weight:800;border-bottom:1px solid rgba(255,255,255,0.15);padding-bottom:4px;margin-bottom:4px;color:#fff;cursor:grab;user-select:none;gap:12px;">
+            <span style="font-family:\'Outfit\',sans-serif;font-size:11px;letter-spacing:0.02em;">♞ DEBUGGER</span>
+            <div style="display:flex;gap:6px;align-items:center;">
+                <button id="ch-debug-trans-btn" style="background:none;border:none;cursor:pointer;font-size:9px;color:${transColor};padding:2px 4px;font-weight:800;" title="Toggle Transparency">T</button>
+                <button id="ch-debug-collapse-btn" style="background:none;border:none;cursor:pointer;font-size:10px;color:#fff;padding:2px 4px;font-weight:800;">${collapseSymbol}</button>
+            </div>
+        </div>
+    `;
+
+    if (appConfig.debugCollapsed) {
+        overlay.innerHTML = headerHTML + `<div style="font-size:9px;color:var(--text-muted);">Engine: ${window.chessHelperEngine?.getState()?.thinking ? 'THINK' : 'READY'}</div>`;
+        bindOverlayHeaderEvents();
+        return;
+    }
+
+    const boardFen = window.chessHelperEngine?.getFEN();
+    const boardState = boardFen ? 'FOUND' : 'NOT FOUND';
+    const engineState = window.chessHelperEngine?.getState();
+    const isThinking = engineState?.thinking ? 'THINKING...' : 'READY';
+    const mouseSpeed = window.chessHelperMouse?.speed || 1.0;
+    const mouseWobble = window.chessHelperMouse?.wobble || 0;
+    const activeTimersCount = window.chessHelperIntervals?.intervals?.size || 0;
+    const queueSize = engineState?.queueSize || 0;
+
+    let itemsHTML = '';
+    
+    if (appConfig.debugShowFps !== false) {
+        itemsHTML += `<div>FPS: <span style="color:#0df5a3;">${fps}</span></div>`;
+    }
+    
+    itemsHTML += `<div>BOARD: <span style="color:${boardFen ? '#0df5a3' : '#ff3366'};">${boardState}</span></div>`;
+    itemsHTML += `<div>ENGINE: <span style="color:${engineState?.thinking ? '#fb923c' : '#0df5a3'};">${isThinking}</span></div>`;
+    itemsHTML += `<div>DEPTH: <span style="color:#a855f7;">${engineState?.depth || 0}</span></div>`;
+    
+    if (appConfig.debugShowBestMove !== false) {
+        itemsHTML += `<div>BEST MOVE: <span style="color:#e9d5ff;text-transform:uppercase;">${engineState?.bestMove || '–'}</span></div>`;
+    }
+    
+    if (appConfig.debugShowEval !== false) {
+        itemsHTML += `<div>EVAL: <span style="color:#60a5fa;">${engineState?.eval || 0.0}</span></div>`;
+    }
+
+    itemsHTML += `<div>MOUSE SPEED: <span style="color:#cbd5e1;">${mouseSpeed}x</span></div>`;
+    itemsHTML += `<div>WOBBLE: <span style="color:#cbd5e1;">${mouseWobble}px</span></div>`;
+
+    if (appConfig.debugShowHumanizer !== false) {
+        const hState = `Fatigue:${appConfig.fatigueEnabled ? 'ON' : 'OFF'} Distract:${appConfig.distractionsEnabled ? 'ON' : 'OFF'}`;
+        itemsHTML += `<div>HUMANIZER: <span style="color:#f472b6;font-size:9px;">${hState}</span></div>`;
+    }
+
+    if (appConfig.debugShowMemory !== false) {
+        const mem = performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) + 'MB' : 'N/A';
+        itemsHTML += `<div>MEMORY: <span style="color:#cbd5e1;">${mem}</span></div>`;
+    }
+
+    itemsHTML += `<div>ACTIVE TIMERS: <span style="color:#cbd5e1;">${activeTimersCount}</span></div>`;
+    itemsHTML += `<div>QUEUE SIZE: <span style="color:#cbd5e1;">${queueSize}</span></div>`;
+    itemsHTML += `<div>PHASE: <span style="color:#cbd5e1;text-transform:uppercase;">${engineState?.phase || 'unknown'}</span></div>`;
+
+    if (boardFen) {
+        itemsHTML += `<div style="font-size:8px;color:var(--text-muted);word-break:break-all;max-width:180px;margin-top:2px;">FEN: ${boardFen.split(' ')[0]}</div>`;
+    }
+
+    overlay.innerHTML = headerHTML + itemsHTML;
+    bindOverlayHeaderEvents();
+}
+
+function applyTheme() {
+    if (!root) return;
+    root.classList.remove('theme-midnight', 'theme-cyber', 'theme-minimal', 'theme-system', 'ch-modern-style');
+    const activeTheme = appConfig.theme || 'midnight';
+    root.classList.add(`theme-${activeTheme}`);
+    root.classList.add('ch-modern-style');
+}
+
+function positionDebugOverlay() {
+    const overlay = $('ch-debug-overlay');
+    if (!overlay) return;
+    if (appConfig.debugPos) {
+        overlay.style.bottom = 'auto';
+        overlay.style.left = appConfig.debugPos.x + 'px';
+        overlay.style.top = appConfig.debugPos.y + 'px';
+    } else {
+        overlay.style.bottom = '16px';
+        overlay.style.left = '16px';
+        overlay.style.top = 'auto';
+    }
+}
+
+function bindDebugOverlayDrag(overlay) {
+    let isDragging = false;
+    let startX = 0, startY = 0;
+    let initialX = 0, initialY = 0;
+
+    overlay.addEventListener('mousedown', (e) => {
+        if (e.target.closest('button')) return;
+        isDragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        const rect = overlay.getBoundingClientRect();
+        initialX = rect.left;
+        initialY = rect.top;
+        overlay.style.cursor = 'grabbing';
+        e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        let nx = initialX + dx;
+        let ny = initialY + dy;
+        const rect = overlay.getBoundingClientRect();
+        nx = Math.max(0, Math.min(window.innerWidth - rect.width, nx));
+        ny = Math.max(0, Math.min(window.innerHeight - rect.height, ny));
+        overlay.style.bottom = 'auto';
+        overlay.style.left = nx + 'px';
+        overlay.style.top = ny + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (!isDragging) return;
+        isDragging = false;
+        overlay.style.cursor = 'grab';
+        const rect = overlay.getBoundingClientRect();
+        appConfig.debugPos = {
+            x: rect.left,
+            y: rect.top
+        };
         saveSettings();
+    });
+}
+
+function bindOverlayHeaderEvents() {
+    const collapseBtn = $('ch-debug-collapse-btn');
+    if (collapseBtn) {
+        collapseBtn.onclick = (e) => {
+            e.stopPropagation();
+            appConfig.debugCollapsed = !appConfig.debugCollapsed;
+            saveSettings();
+            updateDebugOverlay();
+        };
+    }
+    const transBtn = $('ch-debug-trans-btn');
+    if (transBtn) {
+        transBtn.onclick = (e) => {
+            e.stopPropagation();
+            appConfig.debugTransparent = !appConfig.debugTransparent;
+            saveSettings();
+            updateDebugOverlay();
+        };
+    }
+}
+
+function showCrashRecoveryModal() {
+    const modal = el('div', { id: 'ch-crash-modal' });
+    modal.innerHTML = `
+        <div class="ch-crash-content" style="background:rgba(15,16,22,0.95);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:20px;width:260px;box-shadow:0 20px 50px rgba(0,0,0,0.8);backdrop-filter:blur(20px);font-family:\'Outfit\',sans-serif;color:#fff;">
+            <div style="font-weight:800;font-size:14px;color:#ff3366;margin-bottom:8px;display:flex;align-items:center;gap:6px;">⚠️ Crash Detected</div>
+            <div style="font-size:11px;color:var(--text-sub);margin-bottom:16px;line-height:1.4;">Knight unexpectedly stopped. Restore previous session?</div>
+            <div style="display:flex;gap:8px;">
+                <button id="btn-crash-restore" style="flex:1;background:#10b981;color:#fff;border:none;border-radius:8px;padding:6px;font-size:11px;font-weight:700;cursor:pointer;">Restore</button>
+                <button id="btn-crash-discard" style="flex:1;background:rgba(255,255,255,0.06);color:var(--text-sub);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:6px;font-size:11px;font-weight:700;cursor:pointer;">Discard</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    $('btn-crash-restore').onclick = async () => {
+        const data = await chrome.storage.local.get(['appConfigBackup']);
+        if (data.appConfigBackup) {
+            appConfig = data.appConfigBackup;
+            await chrome.storage.local.set({ appConfig });
+            applyConfigToEngine();
+            await loadSettingsView();
+        }
+        modal.remove();
+        showNotification('Session restored', 'success');
     };
-};
+    $('btn-crash-discard').onclick = () => {
+        modal.remove();
+    };
+}
+
+function showCommandPalette() {
+    let existing = $('ch-command-palette');
+    if (existing) {
+        existing.remove();
+        return;
+    }
+    const palette = el('div', { id: 'ch-command-palette' });
+    palette.innerHTML = `
+        <div class="ch-palette-content" style="background:rgba(15,16,22,0.96);border:1px solid rgba(255,255,255,0.12);border-radius:16px;padding:12px;width:340px;box-shadow:0 24px 64px rgba(0,0,0,0.85);backdrop-filter:blur(24px);font-family:\'Outfit\',sans-serif;color:#fff;">
+            <input type="text" id="ch-palette-input" placeholder="Type a command..." style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:8px 12px;font-size:12px;color:#fff;outline:none;font-family:inherit;margin-bottom:8px;" autocomplete="off" />
+            <div id="ch-palette-list" style="max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;">
+            </div>
+        </div>
+    `;
+    document.body.appendChild(palette);
+    const input = $('ch-palette-input');
+    const list = $('ch-palette-list');
+    input.focus();
+
+    const commands = [
+        { name: 'Change Theme', action: () => {
+            const themes = ['midnight', 'minimal', 'system'];
+            const currentIdx = themes.indexOf(appConfig.theme || 'midnight');
+            appConfig.theme = themes[(currentIdx + 1) % themes.length];
+            applyTheme();
+            saveSettings();
+            showNotification(`Theme changed to ${appConfig.theme}`, 'success');
+        }},
+        { name: 'Toggle Debug Overlay', action: () => {
+            appConfig.debugMode = !appConfig.debugMode;
+            saveSettings();
+            applyConfigToEngine();
+            updateDebugOverlay();
+            showNotification(`Debug overlay ${appConfig.debugMode ? 'opened' : 'closed'}`, 'info');
+        }},
+        { name: 'Export Settings', action: () => {
+            $('btn-export').click();
+            showNotification('Settings exported', 'success');
+        }},
+        { name: 'Enable Human Mode', action: () => {
+            appConfig.rageMode = false;
+            appConfig.preset = 'intermediate';
+            saveSettings();
+            syncModeUI();
+            showNotification('Human Mode enabled', 'success');
+        }},
+        { name: 'Reset UI Position', action: () => {
+            drag.ox = window.innerWidth - 76;
+            drag.oy = 100;
+            syncBubble();
+            appConfig.debugPos = null;
+            positionDebugOverlay();
+            saveSettings();
+            showNotification('UI position reset', 'info');
+        }}
+    ];
+
+    let selectedIndex = 0;
+    function renderList() {
+        const query = input.value.toLowerCase();
+        const filtered = commands.filter(c => c.name.toLowerCase().includes(query));
+        list.innerHTML = filtered.map((c, i) => `
+            <div class="ch-palette-item ${i === selectedIndex ? 'selected' : ''}" data-index="${i}" style="padding:8px 12px;border-radius:8px;font-size:11px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:background 0.1s ease;${i === selectedIndex ? 'background:rgba(255,255,255,0.08);color:#0df5a3;font-weight:700;' : 'color:var(--text-sub);'}">
+                <span>> ${c.name}</span>
+            </div>
+        `).join('');
+        const items = list.querySelectorAll('.ch-palette-item');
+        items.forEach((item, idx) => {
+            item.onclick = () => {
+                filtered[idx].action();
+                palette.remove();
+            };
+        });
+    }
+
+    renderList();
+    input.oninput = () => {
+        selectedIndex = 0;
+        renderList();
+    };
+
+    palette.addEventListener('keydown', (e) => {
+        const query = input.value.toLowerCase();
+        const filtered = commands.filter(c => c.name.toLowerCase().includes(query));
+        if (e.code === 'ArrowDown') {
+            e.preventDefault();
+            if (!filtered.length) return;
+            selectedIndex = (selectedIndex + 1) % filtered.length;
+            renderList();
+        } else if (e.code === 'ArrowUp') {
+            e.preventDefault();
+            if (!filtered.length) return;
+            selectedIndex = (selectedIndex - 1 + filtered.length) % filtered.length;
+            renderList();
+        } else if (e.code === 'Enter') {
+            e.preventDefault();
+            if (filtered[selectedIndex]) {
+                filtered[selectedIndex].action();
+                palette.remove();
+            }
+        } else if (e.code === 'Escape') {
+            palette.remove();
+        }
+    });
+
+    document.addEventListener('mousedown', function outsideClick(evt) {
+        if (!palette.contains(evt.target)) {
+            palette.remove();
+            document.removeEventListener('mousedown', outsideClick);
+        }
+    });
+}
+
+function showNotification(message, type = 'info') {
+    let container = $('ch-notification-container');
+    if (!container) {
+        container = el('div', { id: 'ch-notification-container' });
+        document.body.appendChild(container);
+    }
+    const toast = el('div', { className: `ch-toast ${type}` }, message);
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.classList.add('show');
+    }, 10);
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
 
 document.readyState === 'loading'
     ? document.addEventListener('DOMContentLoaded', init)

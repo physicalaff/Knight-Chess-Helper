@@ -1,27 +1,17 @@
+### ⭐ If you like the project — please give it a star!
+
 <p align="center">
-  <img width="100%" alt="Knight — Chess Helper Banner" src="https://github.com/user-attachments/assets/9044c2c9-30ec-4a3d-9642-fbdaf3de8ed9" />
+  <img width="350" height="350" alt="Knight" src="https://github.com/user-attachments/assets/e255d1fa-0f43-4916-b27f-c23167f97d2d" style="border-radius: 20px; box-shadow: 0px 4px 20px rgba(0,0,0,0.5);" />
 </p>
 
----
+# <img src="assets/Knight.png" width="38" valign="middle"> Knight — Chess Helper v6.55 preview
 
-<h1 align="center">
-  <img src="assets/Knight.png" width="38" valign="middle" alt="Knight Logo"> 
-  Knight — Chess Helper v6.1.2
-</h1>
-
-<p align="center">
-  <a href="https://github.com/physicalaff/Knight-Chess-Helper/stargazers">    <img src="https://img.shields.io/github/stars/physicalaff/Knight-Chess-Helper?style=for-the-badge&color=238636&logo=github" alt="GitHub Stars" />
-  </a>
-  <a href="https://github.com/physicalaff/Knight-Chess-Helper/network/members">
-    <img src="https://img.shields.io/github/forks/physicalaff/Knight-Chess-Helper?style=for-the-badge&color=1f6feb&logo=git" alt="GitHub Forks" />
-  </a>
+<p align="left">
+  <img src="https://img.shields.io/github/stars/physicalaff/Knight-Chess-Helper?style=for-the-badge&color=238636&logo=github" alt="GitHub Stars" />
+  <img src="https://img.shields.io/github/forks/physicalaff/Knight-Chess-Helper?style=for-the-badge&color=1f6feb&logo=git" alt="GitHub Forks" />
   <img src="https://img.shields.io/github/repo-size/physicalaff/Knight-Chess-Helper?style=for-the-badge&color=7928ca" alt="Repository Size" />
   <img src="https://img.shields.io/github/languages/top/physicalaff/Knight-Chess-Helper?style=for-the-badge&color=f59e0b" alt="Top Language" />
   <img src="https://img.shields.io/badge/Manifest-V3-orange?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Manifest V3" />
-</p>
-
-<p align="center">
-  <h3>⭐ If you like the project — please give it a star!</h3>
 </p>
 
 ---

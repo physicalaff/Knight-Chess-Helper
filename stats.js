@@ -24,7 +24,7 @@ window.chessHelperStats = {
 
             const color = window.chessHelperEngine?.myColor() || 'w';
             
-            // Динамически считываем текущий ELO пользователя
+            
             let activeElo = finalElo || cfg.elo || 1300;
             if (!finalElo) {
                 try {
@@ -38,7 +38,7 @@ window.chessHelperStats = {
                 } catch (_) {}
             }
 
-            // Синхронизируем текущий ELO в конфиг
+            
             if (activeElo && activeElo !== cfg.elo) {
                 cfg.elo = activeElo;
             }

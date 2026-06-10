@@ -5,12 +5,18 @@ let currentAudio = null;
 let latestEval = 0;
 let latestMate = null;
 let currentActiveColor = 'w';
+let abortedSearchesCount = 0;
 
 function getStockfishWorker() {
     if (stockfishWorker) return stockfishWorker;
 
     const workerUrl = chrome.runtime.getURL('stockfish/stockfish.js');
     stockfishWorker = new Worker(workerUrl);
+
+    stockfishWorker.onerror = (err) => {
+        try { stockfishWorker.terminate(); } catch (_) {}
+        stockfishWorker = null;
+    };
 
     stockfishWorker.onmessage = (event) => {
         const line = event.data;
@@ -22,7 +28,7 @@ function getStockfishWorker() {
                     latestEval = parseInt(match[1]) / 100;
                     latestMate = null;
                 }
-            } else if (line.includes('score mate ')) {
+            } else if (line.startsWith('info') && line.includes('score mate ')) {
                 const match = line.match(/score mate (-?\d+)/);
                 if (match) {
                     latestMate = parseInt(match[1]);
@@ -34,6 +40,11 @@ function getStockfishWorker() {
         if (line.startsWith('bestmove')) {
             const parts = line.split(' ');
             const bestMove = parts[1];
+
+            if (abortedSearchesCount > 0) {
+                abortedSearchesCount--;
+                return;
+            }
 
             if (currentResolve) {
                 let finalEval = latestEval;
@@ -109,6 +120,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (currentResolve) {
             try {
                 worker.postMessage('stop');
+                abortedSearchesCount++;
             } catch (_) {}
             currentResolve({ eval: 0, mate: null, best: null });
         }

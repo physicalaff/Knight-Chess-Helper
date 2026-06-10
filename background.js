@@ -7,6 +7,7 @@ let activeMusicTabId = null;
 let latestEval = 0;
 let latestMate = null;
 let currentActiveColor = 'w';
+let abortedSearchesCount = 0;
 
 const isChrome = typeof chrome.offscreen !== 'undefined';
 
@@ -51,6 +52,11 @@ function getStockfishWorker() {
 
     stockfishWorker = new Worker('stockfish/stockfish.js');
 
+    stockfishWorker.onerror = (err) => {
+        try { stockfishWorker.terminate(); } catch (_) {}
+        stockfishWorker = null;
+    };
+
     stockfishWorker.onmessage = (event) => {
         const line = event.data;
 
@@ -73,6 +79,11 @@ function getStockfishWorker() {
         if (line.startsWith('bestmove')) {
             const parts = line.split(' ');
             const bestMove = parts[1];
+
+            if (abortedSearchesCount > 0) {
+                abortedSearchesCount--;
+                return;
+            }
 
             if (currentResolve) {
                 let finalEval = latestEval;
@@ -102,11 +113,17 @@ function getStockfishWorker() {
     return stockfishWorker;
 }
 
+function timedFetch(url, ms = 9000) {
+    const ctrl = new AbortController();
+    const tid  = setTimeout(() => ctrl.abort(), ms);
+    return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(tid));
+}
+
 async function sendDailyPing() {
     try {
-        let storage = await chrome.storage.local.get(['anonymousClientId', 'lastPingDate', 'telemetryEnabled']);
+        let storage = await chrome.storage.local.get(['anonymousClientId', 'lastPingDate', 'appConfig']);
         
-        if (storage.telemetryEnabled === false) {
+        if (storage.appConfig?.telemetryEnabled !== true) {
             return;
         }
 
@@ -159,6 +176,25 @@ function stopMusic() {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.target !== 'background') return;
+
+    if (message.type === 'FETCH_BOOK') {
+        const fen = message.fen;
+        timedFetch(
+            `https://explorer.lichess.ovh/masters?fen=${encodeURIComponent(fen)}&topGames=0&recentGames=0`,
+            4000
+        )
+        .then(res => {
+            if (!res.ok) throw new Error();
+            return res.json();
+        })
+        .then(data => {
+            sendResponse({ opening: data.opening, moves: data.moves });
+        })
+        .catch(() => {
+            sendResponse(null);
+        });
+        return true;
+    }
 
     if (message.type === 'SET_VISIBILITY') {
         if (isChrome) {
@@ -252,6 +288,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             currentActiveColor = message.fen.split(' ')[1] || 'w';
 
             if (currentResolve) {
+                try {
+                    worker.postMessage('stop');
+                    abortedSearchesCount++;
+                } catch (_) {}
                 currentResolve({ eval: 0, mate: null, best: null });
             }
 

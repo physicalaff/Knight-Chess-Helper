@@ -55,7 +55,7 @@ function tap(type, el, x, y) {
     const clientX = x + (Math.random()-0.5)*1.5;
     const clientY = y + (Math.random()-0.5)*1.5;
     
-    // Dispatch PointerEvent
+    
     el.dispatchEvent(new PointerEvent(type, {
         bubbles: true, cancelable: true, view: window,
         clientX, clientY,
@@ -64,7 +64,7 @@ function tap(type, el, x, y) {
         width: rnd(1,3), height: rnd(1,3), pressure: type.includes('down') ? rnd(0.4, 0.7) : 0,
     }));
     
-    // Dispatch corresponding MouseEvent
+    
     const mouseType = type === 'pointerdown' ? 'mousedown' : (type === 'pointerup' ? 'mouseup' : null);
     if (mouseType) {
         el.dispatchEvent(new MouseEvent(mouseType, {
@@ -74,7 +74,7 @@ function tap(type, el, x, y) {
         }));
     }
     
-    // If it's a pointerup/mouseup, also dispatch a click event to guarantee action registration
+    
     if (type === 'pointerup') {
         el.dispatchEvent(new MouseEvent('click', {
             bubbles: true, cancelable: true, view: window,
