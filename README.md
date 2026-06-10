@@ -48,26 +48,22 @@ Unlike many browser chess tools, Knight uses a local Stockfish WebAssembly engin
 - 🚀 Manifest V3 Optimized
 
 ---
+## 📸 Interface Preview
 
-# 📸 Screenshots
+<details>
+<summary><b>📸 Click to view interface screenshots</b></summary>
 
-## Main Interface
-
-<p align="center">
-  <img src="screenshots/main-ui.png" width="100%">
-</p>
-
-The modern dashboard provides instant access to analysis, hints, statistics and automation settings.
-
----
-
-## Language Selection
+<br>
 
 <p align="center">
-  <img src="screenshots/language-selector.png" width="75%">
+  <img src="docs/screenshots/main-ui.png" width="55%">
 </p>
 
-Built-in multilingual onboarding with a clean first-launch experience.
+<p align="center">
+  <img src="docs/screenshots/language-selector.png" width="40%">
+</p>
+
+</details>
 
 ---
 
@@ -161,13 +157,16 @@ chrome://extensions
 6. Select the extracted folder.
 7. Open Chess.com.
 
-## Firefox
+## Firefox (Beta)
 
 ```text
 about:debugging
 ```
 
-Load Temporary Add-on and select the extension folder.
+Click **Load Temporary Add-on** and select the extension folder.
+
+> ⚠️ Firefox support is experimental and currently in beta. While most functionality should work, some features may behave differently or not work as expected.
+
 
 ---
 
