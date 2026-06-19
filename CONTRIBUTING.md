@@ -1,41 +1,67 @@
-# Contributing to Knight — Chess Assistant
+# Contributing to Knight Chess Helper
 
-Thank you for your interest in contributing to **Knight — Chess Assistant**! 
+First off — thank you for taking the time to contribute! 💙
+Knight is an open-source project and every issue, idea and pull request helps.
 
-To understand the core architecture, playstyle presets, anti-ban emulations, and setup procedures of the extension, please check the **[Official User Guide](docs/USER_GUIDE.md)** first.
-
----
-
-## 🚀 How to Contribute
-
-### 1. Reporting Bugs & Suggesting Features
-*   Open an issue on the [Issues](https://github.com/physicalaff/Knight-Chess-Helper/issues) page.
-*   Clearly describe the bug or feature, including steps to reproduce, actual vs. expected behavior, and console logs if possible.
-
-### 2. Submitting Pull Requests
-1.  **Fork the repository** and clone your fork locally.
-2.  **Create a branch** for your changes:
-    ```bash
-    git checkout -b feature/my-cool-feature
-    # or
-    git checkout -b fix/my-bug-fix
-    ```
-3.  **Implement your changes**:
-    *   Maintain clean, self-documenting code.
-    *   Ensure any helper functions are placed inside correct files (e.g. mouse movement logic in `mouse.js`, engine helpers in `engine.js`, UI elements in `ui.js`).
-4.  **Perform syntax checks**:
-    Ensure JavaScript code compiles without errors:
-    ```bash
-    node -c engine.js background.js ui.js mouse.js stats.js book.js
-    ```
-5.  **Commit and push**:
-    Keep commits descriptive and atomic.
-6.  **Open a Pull Request** against the `main` branch of this repository.
+Before diving in, the [**User Guide**](docs/USER_GUIDE.md) is the best place to understand how the extension is structured and what each feature does.
 
 ---
 
-## 🎨 Code Architecture Guidelines
+## 🚀 Ways to Contribute
 
-*   **Content Scripts Scope**: All content scripts (`mouse.js`, `stats.js`, `book.js`, `engine.js`, `ui.js`) run in the same global execution context on Chess.com. Be careful with global variable names (e.g., prefix UI-specific helpers like `sleep` or `rnd` to avoid naming collisions).
-*   **WebAssembly Engine**: The Stockfish engine runs inside a background service worker or offscreen document. Communication is managed through Manifest V3 `chrome.runtime.sendMessage` API.
-*   **Aesthetics**: Any UI styling should be defined inside the `STYLES` CSS string block in `ui.js` using modern CSS and a premium glassmorphic dark-theme design.
+### 🐛 Report a bug
+Open an issue on the [Issues](https://github.com/physicalaff/Knight-Chess-Helper/issues) page and include:
+- clear steps to reproduce,
+- what you expected vs. what actually happened,
+- your browser/version, and console logs if you have them.
+
+### 💡 Suggest a feature
+Open an issue describing the idea and the problem it solves. Mockups or examples are very welcome.
+
+### 🔀 Submit a pull request
+See the workflow below.
+
+---
+
+## 🔧 Development Setup
+
+1. **Fork** the repository and clone your fork:
+   ```bash
+   git clone https://github.com/<your-username>/Knight-Chess-Helper.git
+   cd Knight-Chess-Helper
+   ```
+2. **Create a branch** for your change:
+   ```bash
+   git checkout -b feature/my-cool-feature
+   # or
+   git checkout -b fix/my-bug-fix
+   ```
+3. **Load the extension** in Chrome via `chrome://extensions` → *Developer mode* → *Load unpacked* (select the project folder). Reload the extension after each change.
+
+---
+
+## ✅ Before You Open a PR
+
+- **Keep modules focused.** Put logic where it belongs: board/cursor in `mouse.js`, engine helpers in `engine.js`, UI in `ui.js`, stats in `stats.js`, opening data in `book.js`.
+- **Syntax-check your JavaScript.** Any modern JS toolchain works, e.g.:
+  ```bash
+  # with Bun
+  bun build engine.js background.js ui.js mouse.js stats.js book.js --target=browser
+
+  # or with Node
+  node --check engine.js && node --check ui.js   # repeat per file
+  ```
+- **Write clean, self-documenting code** and keep commits small and descriptive.
+- **Open the PR against `main`** with a short summary of what changed and why.
+
+---
+
+## 🎨 Code & Style Guidelines
+
+- **Shared global scope.** All content scripts (`mouse.js`, `stats.js`, `book.js`, `engine.js`, `ui.js`) run in the same execution context on Chess.com. Prefix or namespace helpers (e.g. `sleep`, `rnd`) to avoid collisions.
+- **Engine isolation.** Stockfish runs inside the background service worker / offscreen document. All communication goes through the Manifest V3 `chrome.runtime.sendMessage` API.
+- **Styling.** UI styles live in the `STYLES` and `STYLES_V7` template strings in `ui.js`. The current design is a modern, minimal dark/light system with an indigo accent — keep new UI consistent with it, and respect `prefers-reduced-motion` for animations.
+
+---
+
+Thanks again for helping make Knight better! ⭐

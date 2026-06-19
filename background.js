@@ -1,15 +1,40 @@
 let creatingOffscreen = null;
 let stockfishWorker = null;
-let currentResolve = null;
 let currentAudio = null;
 let activeMusicTabId = null;
 
 let latestEval = 0;
 let latestMate = null;
-let currentActiveColor = 'w';
-let abortedSearchesCount = 0;
+
+// Search state machine (Firefox / non-offscreen path). Mirrors offscreen.js:
+// `currentResolve` is the search we want a result for, `queued` is a search
+// waiting for the previous (stopped) one to flush its bestmove. This makes
+// stale bestmoves harmless, replacing the old `abortedSearchesCount` counter
+// that could desync.
+let currentResolve = null;
+let currentColor = 'w';
+let queued = null;
+let searching = false;
+
+const ERROR_RESULT = { error: true, eval: 0, mate: null, best: null };
 
 const isChrome = typeof chrome.offscreen !== 'undefined';
+
+function startSearch(fen, depth, color, resolve) {
+    currentResolve = resolve;
+    currentColor = color;
+    latestEval = 0;
+    latestMate = null;
+    searching = true;
+    stockfishWorker.postMessage(`position fen ${fen}`);
+    stockfishWorker.postMessage(`go depth ${depth}`);
+}
+
+function failAllPending() {
+    if (currentResolve) { currentResolve(ERROR_RESULT); currentResolve = null; }
+    if (queued) { queued.resolve(ERROR_RESULT); queued = null; }
+    searching = false;
+}
 
 async function setupOffscreen(force = false) {
     if (!isChrome) return;
@@ -55,6 +80,7 @@ function getStockfishWorker() {
     stockfishWorker.onerror = (err) => {
         try { stockfishWorker.terminate(); } catch (_) {}
         stockfishWorker = null;
+        failAllPending();
     };
 
     stockfishWorker.onmessage = (event) => {
@@ -67,7 +93,7 @@ function getStockfishWorker() {
                     latestEval = parseInt(match[1]) / 100;
                     latestMate = null;
                 }
-            } else if (line.startsWith('info') && line.includes('score mate ')) {
+            } else if (line.includes('score mate ')) {
                 const match = line.match(/score mate (-?\d+)/);
                 if (match) {
                     latestMate = parseInt(match[1]);
@@ -77,31 +103,29 @@ function getStockfishWorker() {
         }
 
         if (line.startsWith('bestmove')) {
-            const parts = line.split(' ');
-            const bestMove = parts[1];
+            const bestMove = line.split(' ')[1];
 
-            if (abortedSearchesCount > 0) {
-                abortedSearchesCount--;
+            if (queued) {
+                const q = queued;
+                queued = null;
+                startSearch(q.fen, q.depth, q.color, q.resolve);
                 return;
             }
 
             if (currentResolve) {
                 let finalEval = latestEval;
                 let finalMate = latestMate;
-
-                if (currentActiveColor === 'b') {
+                if (currentColor === 'b') {
                     finalEval = -latestEval;
-                    if (latestMate !== null) {
-                        finalMate = -latestMate;
-                    }
+                    if (latestMate !== null) finalMate = -latestMate;
                 }
 
-                currentResolve({
-                    best: bestMove,
-                    eval: finalEval,
-                    mate: finalMate
-                });
+                const resolve = currentResolve;
                 currentResolve = null;
+                searching = false;
+                resolve({ best: bestMove, eval: finalEval, mate: finalMate });
+            } else {
+                searching = false;
             }
         }
     };
@@ -175,6 +199,7 @@ function stopMusic() {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (sender && sender.id && sender.id !== chrome.runtime.id) return;
     if (message.target !== 'background') return;
 
     if (message.type === 'FETCH_BOOK') {
@@ -282,25 +307,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             });
         } else {
             const worker = getStockfishWorker();
-
-            latestEval = 0;
-            latestMate = null;
-            currentActiveColor = message.fen.split(' ')[1] || 'w';
-
-            if (currentResolve) {
-                try {
-                    worker.postMessage('stop');
-                    abortedSearchesCount++;
-                } catch (_) {}
-                currentResolve({ eval: 0, mate: null, best: null });
-            }
+            const fen = message.fen;
+            const depth = message.depth;
+            const color = fen.split(' ')[1] || 'w';
 
             const analysisPromise = new Promise((resolve) => {
-                currentResolve = resolve;
+                if (searching) {
+                    if (currentResolve) { currentResolve(ERROR_RESULT); currentResolve = null; }
+                    if (queued) { queued.resolve(ERROR_RESULT); }
+                    queued = { fen, depth, color, resolve };
+                    try { worker.postMessage('stop'); } catch (_) {}
+                } else {
+                    startSearch(fen, depth, color, resolve);
+                }
             });
-
-            worker.postMessage(`position fen ${message.fen}`);
-            worker.postMessage(`go depth ${message.depth}`);
 
             analysisPromise.then((result) => {
                 chrome.tabs.sendMessage(tabId, {

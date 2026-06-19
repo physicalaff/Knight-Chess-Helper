@@ -1,62 +1,85 @@
-### ⭐ If you like the project — please give it a star!
+<div align="center">
 
-<p align="center">
-  <img width="350" height="350" alt="Knight" src="https://github.com/user-attachments/assets/e255d1fa-0f43-4916-b27f-c23167f97d2d" />
+<img width="160" height="160" alt="Knight Chess Helper" src="https://github.com/user-attachments/assets/e255d1fa-0f43-4916-b27f-c23167f97d2d" />
+
+# ♞ Knight Chess Helper
+
+**A modern, local-first chess analysis assistant for Chess.com — powered by Stockfish WebAssembly.**
+
+Fast · Local · Open Source · Privacy-First · Manifest V3
+
+<p>
+  <img src="https://img.shields.io/github/stars/physicalaff/Knight-Chess-Helper?style=for-the-badge&logo=github&color=7C84F2&labelColor=0A0A0B">
+  <img src="https://img.shields.io/github/forks/physicalaff/Knight-Chess-Helper?style=for-the-badge&logo=github&color=7C84F2&labelColor=0A0A0B">
+  <img src="https://img.shields.io/github/issues/physicalaff/Knight-Chess-Helper?style=for-the-badge&color=7C84F2&labelColor=0A0A0B">
+  <img src="https://img.shields.io/github/last-commit/physicalaff/Knight-Chess-Helper?style=for-the-badge&color=7C84F2&labelColor=0A0A0B">
+</p>
+<p>
+  <img src="https://img.shields.io/badge/Stockfish-WebAssembly-7C84F2?style=for-the-badge&labelColor=0A0A0B">
+  <img src="https://img.shields.io/badge/Manifest-V3-7C84F2?style=for-the-badge&labelColor=0A0A0B">
+  <img src="https://img.shields.io/github/license/physicalaff/Knight-Chess-Helper?style=for-the-badge&color=7C84F2&labelColor=0A0A0B">
 </p>
 
-<h1 align="center">♞ Knight Chess Helper</h1>
-
-<p align="center">
-  <b>Modern Chess Analysis Assistant powered by Stockfish WebAssembly</b>
-</p>
-
-<p align="center">
-  Fast • Local • Open Source • Privacy First • Manifest V3
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/github/stars/physicalaff/Knight-Chess-Helper?style=for-the-badge&logo=github">
-  <img src="https://img.shields.io/github/forks/physicalaff/Knight-Chess-Helper?style=for-the-badge&logo=github">
-  <img src="https://img.shields.io/github/issues/physicalaff/Knight-Chess-Helper?style=for-the-badge">
-  <img src="https://img.shields.io/github/last-commit/physicalaff/Knight-Chess-Helper?style=for-the-badge">
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/github/repo-size/physicalaff/Knight-Chess-Helper?style=for-the-badge">
-  <img src="https://img.shields.io/github/license/physicalaff/Knight-Chess-Helper?style=for-the-badge">
-  <img src="https://img.shields.io/badge/Stockfish-WebAssembly-red?style=for-the-badge">
-  <img src="https://img.shields.io/badge/Manifest-V3-orange?style=for-the-badge">
-</p>
+</div>
 
 ---
 
-# ✨ Why Knight?
+## 📑 Table of Contents
 
-Knight is a modern chess assistant focused on analysis, training, opening preparation and a polished user experience.
+> Click any section to jump straight to it.
 
-Unlike many browser chess tools, Knight uses a local Stockfish WebAssembly engine and a modern interface designed for speed, simplicity and performance.
-
-## Highlights
-
-- 🧠 Local Stockfish WebAssembly Engine
-- 📖 Integrated Opening Book
-- 🎯 Real-Time Board Suggestions
-- 📊 Match Statistics
-- 🌍 Multi-Language Support
-- ⚡ Modern Responsive Interface
-- 🔒 Privacy First Architecture
-- 🚀 Manifest V3 Optimized
+- [✨ Why Knight?](#-why-knight)
+- [🎯 Features](#-features)
+- [📸 Interface Preview](#-interface-preview)
+- [🛠️ Installation](#️-installation)
+- [📖 Documentation](#-documentation)
+- [🏗️ Architecture](#️-architecture)
+- [🗺️ Roadmap](#️-roadmap)
+- [🤝 Contributing](#-contributing)
+- [⚖️ Responsible Use](#️-responsible-use)
+- [📝 License](#-license)
 
 ---
+
+## ✨ Why Knight?
+
+Knight is a clean, modern chess assistant built for **analysis, study, opening preparation and post-game review** directly inside your browser.
+
+Unlike many browser chess tools, Knight runs a **local Stockfish WebAssembly engine** — nothing is sent to a remote server, so analysis is fast, private and works offline. The interface is rebuilt from the ground up with a focus on speed, clarity and a genuinely premium feel.
+
+```
+🧠  Local engine      →  no external API, full privacy
+⚡  Instant analysis  →  evaluation & best lines in real time
+🎨  Modern UI         →  redesigned dark/light themes, zero clutter
+🔒  Privacy-first     →  your games never leave your machine
+```
+
+---
+
+## 🎯 Features
+
+| | Feature | Description |
+|:--:|---|---|
+| 🧠 | **Stockfish Engine** | Local WebAssembly engine — fast, private, offline-capable |
+| 📊 | **Position Strength** | Live centipawn evaluation bar with a clean numeric readout |
+| 🎯 | **Best-Move Hints** | Visual arrows drawn directly on the board |
+| 📖 | **Opening Book** | Opening recognition and preparation suggestions |
+| 📈 | **Match Statistics** | Offline tracking of moves, phases and game history |
+| 🌍 | **Multi-Language** | English & Russian out of the box |
+| 🌗 | **Light & Dark Themes** | A polished theme switcher in a dedicated Settings tab |
+| ⚡ | **Manifest V3** | Modern, service-worker based, future-proof architecture |
+
+---
+
 ## 📸 Interface Preview
 
-<details>
-<summary><b>📸 Click to view interface screenshots</b></summary>
+<details open>
+<summary><b>Click to expand screenshots</b></summary>
 
 <br>
 
 <p align="center">
-  <img src="docs/screenshots/main-ui.png" width="55%">
+  <img src="docs/screenshots/main-ui.png" width="60%">
 </p>
 
 <p align="center">
@@ -67,141 +90,100 @@ Unlike many browser chess tools, Knight uses a local Stockfish WebAssembly engin
 
 ---
 
-# 🚀 Features
+## 🛠️ Installation
 
-| Feature | Description |
-|----------|-------------|
-| 🧠 Stockfish Engine | Fast local analysis powered by WebAssembly |
-| 📖 Opening Book | Opening recommendations and preparation |
-| 🎯 Move Suggestions | Visual board hints |
-| 📊 Statistics | Offline performance tracking |
-| 🌍 Languages | English & Russian |
-| ⚡ Fast UI | Optimized rendering and responsiveness |
-| 🔒 Privacy | No external engine dependency |
-| 🎨 Modern Design | Clean neon-inspired interface |
+> Knight is distributed via GitHub and loaded as an **unpacked extension** (it is not on the Chrome Web Store).
 
----
+### Chromium browsers (Chrome, Edge, Brave, Opera)
 
-# ⚖️ Disclaimer
+1. Download the latest [release](https://github.com/physicalaff/Knight-Chess-Helper/releases) `.zip`.
+2. Extract it into a dedicated folder.
+3. Open `chrome://extensions` in your browser.
+4. Enable **Developer mode** (top-right).
+5. Click **Load unpacked** and select the extracted folder.
+6. Open [Chess.com](https://www.chess.com/) and click the floating Knight icon.
 
-Knight is intended for educational purposes, analysis, game review and chess improvement.
+📘 **Need pictures?** A full step-by-step walkthrough with screenshots lives in the [User Guide](docs/USER_GUIDE.md#-installation).
 
-Please use the project responsibly and follow the rules of the platform where you play.
+### Firefox (experimental)
 
----
+Open `about:debugging` → **This Firefox** → **Load Temporary Add-on** and pick any file inside the extension folder.
 
-# 📊 Project Analytics
-
-<p align="center">
-  <img src="https://github-readme-activity-graph.vercel.app/graph?username=physicalaff&repo=Knight-Chess-Helper&theme=react-dark&bg_color=0d1117&hide_border=true" width="100%">
-</p>
-
-<p align="center">
-  <img src="https://github-readme-stats.vercel.app/api/pin/?username=physicalaff&repo=Knight-Chess-Helper&theme=dark" width="49%">
-  <img src="https://github-readme-streak-stats.herokuapp.com/?user=physicalaff&theme=dark&background=0d1117&hide_border=true" width="49%">
-</p>
-
-<p align="center">
-  <img src="https://github-readme-stats.vercel.app/api?username=physicalaff&show_icons=true&theme=tokyonight&hide_border=true">
-</p>
+> ⚠️ Firefox support is in beta — most features work, but some may behave differently.
 
 ---
 
-# ⚔️ Why Use Knight?
+## 📖 Documentation
 
-| Feature | Knight | Typical Browser Tools |
-|----------|----------|----------|
-| Local Engine | ✅ | ⚠️ |
-| Open Source | ✅ | ❌ |
-| Modern UI | ✅ | ⚠️ |
-| Statistics | ✅ | ❌ |
-| Opening Book | ✅ | ⚠️ |
-| Privacy First | ✅ | ❌ |
-| Manifest V3 | ✅ | ⚠️ |
+| Document | What's inside |
+|---|---|
+| 📘 [User Guide](docs/USER_GUIDE.md) | Full feature tour, interface reference, settings, install walkthrough, troubleshooting |
+| 🤝 [Contributing](CONTRIBUTING.md) | How to build, the code architecture, and how to open a good PR |
+
+The User Guide ships with a **clickable table of contents** — every heading is a jump-link, so you can navigate the docs like chapters.
 
 ---
 
-# 🏗️ Architecture
+## 🏗️ Architecture
 
 <p align="center">
   <img width="100%" src="https://github.com/user-attachments/assets/0a9a8e6a-b5dd-4f61-8e42-2c2a322159c6" />
 </p>
 
-Knight uses:
+Knight is split into focused, single-responsibility modules:
 
-- Content Scripts
-- Background Service Worker
-- Offscreen Processing
-- Stockfish WebAssembly
-- Opening Book System
-- Statistics Manager
+| Layer | Responsibility |
+|---|---|
+| **Content scripts** (`ui.js`, `mouse.js`, `book.js`, `stats.js`) | Inject the dashboard, draw on the board, track stats |
+| **Background service worker** (`background.js`) | Coordinate messages and engine requests (Manifest V3) |
+| **Offscreen document** (`offscreen.js`) | Host the Stockfish WebAssembly worker |
+| **Engine layer** (`engine.js`) | Run analysis, manage retries and evaluation parsing |
 
-This architecture keeps analysis fast while maintaining browser compatibility.
-
----
-
-# 🛠️ Installation
-
-## Chromium Browsers
-
-1. Download the latest release.
-2. Extract the archive.
-3. Open:
-
-```text
-chrome://extensions
-```
-
-4. Enable Developer Mode.
-5. Click Load unpacked.
-6. Select the extracted folder.
-7. Open Chess.com.
-
-## Firefox (Beta)
-
-```text
-about:debugging
-```
-
-Click **Load Temporary Add-on** and select the extension folder.
-
-> ⚠️ Firefox support is experimental and currently in beta. While most functionality should work, some features may behave differently or not work as expected.
-
+This keeps analysis responsive while staying fully compatible with Manifest V3.
 
 ---
 
-# 🗺️ Roadmap
+## 🗺️ Roadmap
 
-- [x] Stockfish Integration
-- [x] Opening Book
-- [x] Statistics Tracking
-- [x] Modern UI
-- [x] Multi-language Support
-- [ ] Puzzle Trainer
-- [ ] Cloud Sync
-- [ ] Advanced Reports
-- [ ] Additional Languages
-
----
-
-# ❤️ Support
-
-If Knight helped you:
-
-⭐ Star the repository
-
-🐛 Report bugs
-
-💡 Suggest features
-
-🔀 Submit pull requests
-
-Every star helps the project grow.
+- [x] Stockfish WebAssembly integration
+- [x] Opening book
+- [x] Statistics tracking
+- [x] Full UI redesign (light & dark themes)
+- [x] Multi-language support
+- [ ] Puzzle / tactics trainer
+- [ ] Exportable analysis reports
+- [ ] Additional languages
 
 ---
 
-# 📝 License
+## 🤝 Contributing
 
-Licensed under the MIT License.
+Contributions are very welcome! 💙
 
-Stockfish is licensed under GPLv3.
+- ⭐ **Star** the repo to support the project
+- 🐛 **Report bugs** via [Issues](https://github.com/physicalaff/Knight-Chess-Helper/issues)
+- 💡 **Suggest features** you'd like to see
+- 🔀 **Open a PR** — see [CONTRIBUTING.md](CONTRIBUTING.md) for setup and guidelines
+
+---
+
+## ⚖️ Responsible Use
+
+Knight is built for **learning, analysis, opening preparation and reviewing your own games**.
+
+Please use it responsibly and respect the Terms of Service of any platform where you play. Don't use Knight to gain an unfair advantage in live games against other people — that's not what it's for, and it ruins the game for everyone.
+
+---
+
+## 📝 License
+
+Knight Chess Helper is released under the **MIT License**.
+Stockfish is licensed under the **GPLv3**.
+
+<div align="center">
+
+---
+
+**If Knight helps your chess, consider leaving a ⭐ — it genuinely helps the project grow.**
+
+</div>

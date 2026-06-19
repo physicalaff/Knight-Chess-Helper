@@ -327,7 +327,22 @@ window.chessHelperIntervals = {
             return s + (e || '');
         });
 
-        return rows.join('/') + ` ${activeColor()} KQkq - 0 1`;
+        // Best-effort castling rights derived from the static board. Far more
+        // accurate than the old hard-coded "KQkq": a side only keeps a right if
+        // its king is still on its home square and the matching rook is present.
+        // (grid[0] = rank 8, grid[7] = rank 1; file a..h = index 0..7.)
+        let castling = '';
+        if (grid[7][4] === 'K') {
+            if (grid[7][7] === 'R') castling += 'K';
+            if (grid[7][0] === 'R') castling += 'Q';
+        }
+        if (grid[0][4] === 'k') {
+            if (grid[0][7] === 'r') castling += 'k';
+            if (grid[0][0] === 'r') castling += 'q';
+        }
+        if (!castling) castling = '-';
+
+        return rows.join('/') + ` ${activeColor()} ${castling} - 0 1`;
     }
 
     function squareRect(sq) {
@@ -416,7 +431,8 @@ window.chessHelperIntervals = {
 
     const pendingAnalyses = new Map();
 
-    chrome.runtime.onMessage.addListener((message) => {
+    chrome.runtime.onMessage.addListener((message, sender) => {
+        if (sender && sender.id && sender.id !== chrome.runtime.id) return;
         if (message.type === 'ANALYSIS_RESULT') {
             const { requestId, data } = message;
             if (pendingAnalyses.has(requestId)) {
@@ -427,12 +443,11 @@ window.chessHelperIntervals = {
         }
     });
 
-    async function analyze(fen, depth, tries = 2) {
-        const key = `${fen}|${depth}`;
-        if (engineCache.has(key)) return engineCache.get(key);
-
+    // Single Stockfish request. Resolves with {result, searchTime}.
+    // On timeout returns an explicit error sentinel so the caller can retry
+    // instead of silently treating a failed search as an equal (0.0) evaluation.
+    async function analyzeOnce(fen, depth) {
         const requestId = `${Date.now()}-${Math.random()}`;
-
         const promise = new Promise((resolve) => {
             pendingAnalyses.set(requestId, { resolve });
         });
@@ -441,7 +456,7 @@ window.chessHelperIntervals = {
             if (pendingAnalyses.has(requestId)) {
                 const { resolve } = pendingAnalyses.get(requestId);
                 pendingAnalyses.delete(requestId);
-                resolve({ eval: 0, mate: null, best: null });
+                resolve({ error: true, eval: 0, mate: null, best: null });
             }
         }, 10000);
 
@@ -456,23 +471,36 @@ window.chessHelperIntervals = {
 
         const result = await promise;
         clearTimeout(safetyTimeout);
+        return { result, searchTime: Math.round(performance.now() - startTime) };
+    }
 
-        if (result && result.best) {
-            if (engineCache.size > 120) engineCache.delete(engineCache.keys().next().value);
-            engineCache.set(key, result);
-            const searchTime = Math.round(performance.now() - startTime);
-            try {
-                const stored = await chrome.storage.local.get(['appConfig']);
-                const cfg = stored.appConfig || {};
-                cfg.statAnalyses = (cfg.statAnalyses || 0) + 1;
-                cfg.statTotalSearchTime = (cfg.statTotalSearchTime || 0) + searchTime;
-                cfg.statTotalDepth = (cfg.statTotalDepth || 0) + depth;
-                await chrome.storage.local.set({ appConfig: cfg });
-            } catch (_) {}
-            return result;
+    async function analyze(fen, depth, tries = 2) {
+        const key = `${fen}|${depth}`;
+        if (engineCache.has(key)) return engineCache.get(key);
+
+        // Real retry loop: a timed-out or superseded search no longer poisons
+        // the result. `tries` is now actually honoured.
+        for (let attempt = 0; attempt < Math.max(1, tries); attempt++) {
+            const { result, searchTime } = await analyzeOnce(fen, depth);
+
+            if (result && result.best && !result.error) {
+                if (engineCache.size > 120) engineCache.delete(engineCache.keys().next().value);
+                engineCache.set(key, result);
+                try {
+                    const stored = await chrome.storage.local.get(['appConfig']);
+                    const cfg = stored.appConfig || {};
+                    cfg.statAnalyses = (cfg.statAnalyses || 0) + 1;
+                    cfg.statTotalSearchTime = (cfg.statTotalSearchTime || 0) + searchTime;
+                    cfg.statTotalDepth = (cfg.statTotalDepth || 0) + depth;
+                    await chrome.storage.local.set({ appConfig: cfg });
+                } catch (_) {}
+                return result;
+            }
         }
 
-        return { eval: 0, mate: null, best: null };
+        // All attempts failed: surface an error sentinel and do NOT cache it,
+        // so a later retry for the same position can still succeed.
+        return { error: true, eval: 0, mate: null, best: null };
     }
 
     
