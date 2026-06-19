@@ -79,11 +79,11 @@ Unlike many browser chess tools, Knight runs a **local Stockfish WebAssembly eng
 <br>
 
 <p align="center">
-  <img src="docs/screenshots/main-ui.png" width="60%">
+  <img src="docs/screenshots/main-ui.pn" width="60%">
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/language-selector.png" width="40%">
+  <img src="docs/screenshots/language-selector.pn" width="40%">
 </p>
 
 </details>
