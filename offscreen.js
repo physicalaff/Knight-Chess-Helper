@@ -15,7 +15,48 @@ let currentColor = 'w';
 let queued = null;
 let searching = false;
 
+// Watchdog: if Stockfish never emits a `bestmove` for a running (or `stop`ped)
+// search, the whole state machine would deadlock — `searching` stays true and
+// every future request just replaces `queued`, so analysis "freezes forever".
+// This can happen when `stop` is sent before a search actually started, or when
+// the engine drops a bestmove line. The watchdog recovers by rebuilding the
+// worker and either failing or restarting the pending request.
+let searchWatchdog = null;
+const SEARCH_TIMEOUT_MS = 15000;
+
 const ERROR_RESULT = { error: true, eval: 0, mate: null, best: null };
+
+function clearSearchWatchdog() {
+    if (searchWatchdog) { clearTimeout(searchWatchdog); searchWatchdog = null; }
+}
+
+function armSearchWatchdog() {
+    clearSearchWatchdog();
+    searchWatchdog = setTimeout(onSearchTimeout, SEARCH_TIMEOUT_MS);
+}
+
+function onSearchTimeout() {
+    searchWatchdog = null;
+    // The engine appears wedged. Tear the worker down so a fresh one is created.
+    try { if (stockfishWorker) stockfishWorker.terminate(); } catch (_) {}
+    stockfishWorker = null;
+
+    const pending = queued;
+    if (currentResolve) { currentResolve(ERROR_RESULT); currentResolve = null; }
+    queued = null;
+    searching = false;
+
+    // If a request was waiting behind the wedged search, run it on a clean worker
+    // instead of dropping it — otherwise the user's next hint keeps failing.
+    if (pending) {
+        try {
+            getStockfishWorker();
+            startSearch(pending.fen, pending.depth, pending.color, pending.resolve);
+        } catch (_) {
+            pending.resolve(ERROR_RESULT);
+        }
+    }
+}
 
 function startSearch(fen, depth, color, resolve) {
     currentResolve = resolve;
@@ -25,9 +66,11 @@ function startSearch(fen, depth, color, resolve) {
     searching = true;
     stockfishWorker.postMessage(`position fen ${fen}`);
     stockfishWorker.postMessage(`go depth ${depth}`);
+    armSearchWatchdog();
 }
 
 function failAllPending() {
+    clearSearchWatchdog();
     if (currentResolve) { currentResolve(ERROR_RESULT); currentResolve = null; }
     if (queued) { queued.resolve(ERROR_RESULT); queued = null; }
     searching = false;
@@ -67,6 +110,7 @@ function getStockfishWorker() {
 
         if (line.startsWith('bestmove')) {
             const bestMove = line.split(' ')[1];
+            clearSearchWatchdog();
 
             // A queued search means this bestmove belongs to a search we already
             // abandoned (it was `stop`ped). Discard its data and start the

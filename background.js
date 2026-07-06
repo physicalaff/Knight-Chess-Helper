@@ -16,9 +16,45 @@ let currentColor = 'w';
 let queued = null;
 let searching = false;
 
+// Watchdog: if Stockfish never emits a `bestmove` for a running (or `stop`ped)
+// search, the state machine deadlocks (`searching` stuck true) and analysis
+// freezes forever. Recover by rebuilding the worker and restarting/failing the
+// pending request.
+let searchWatchdog = null;
+const SEARCH_TIMEOUT_MS = 15000;
+
 const ERROR_RESULT = { error: true, eval: 0, mate: null, best: null };
 
 const isChrome = typeof chrome.offscreen !== 'undefined';
+
+function clearSearchWatchdog() {
+    if (searchWatchdog) { clearTimeout(searchWatchdog); searchWatchdog = null; }
+}
+
+function armSearchWatchdog() {
+    clearSearchWatchdog();
+    searchWatchdog = setTimeout(onSearchTimeout, SEARCH_TIMEOUT_MS);
+}
+
+function onSearchTimeout() {
+    searchWatchdog = null;
+    try { if (stockfishWorker) stockfishWorker.terminate(); } catch (_) {}
+    stockfishWorker = null;
+
+    const pending = queued;
+    if (currentResolve) { currentResolve(ERROR_RESULT); currentResolve = null; }
+    queued = null;
+    searching = false;
+
+    if (pending) {
+        try {
+            getStockfishWorker();
+            startSearch(pending.fen, pending.depth, pending.color, pending.resolve);
+        } catch (_) {
+            pending.resolve(ERROR_RESULT);
+        }
+    }
+}
 
 function startSearch(fen, depth, color, resolve) {
     currentResolve = resolve;
@@ -28,9 +64,11 @@ function startSearch(fen, depth, color, resolve) {
     searching = true;
     stockfishWorker.postMessage(`position fen ${fen}`);
     stockfishWorker.postMessage(`go depth ${depth}`);
+    armSearchWatchdog();
 }
 
 function failAllPending() {
+    clearSearchWatchdog();
     if (currentResolve) { currentResolve(ERROR_RESULT); currentResolve = null; }
     if (queued) { queued.resolve(ERROR_RESULT); queued = null; }
     searching = false;
@@ -104,6 +142,7 @@ function getStockfishWorker() {
 
         if (line.startsWith('bestmove')) {
             const bestMove = line.split(' ')[1];
+            clearSearchWatchdog();
 
             if (queued) {
                 const q = queued;

@@ -50,6 +50,7 @@ const TRANSLATIONS = {
         hint: "Подсказка",
         analyzing: "Анализ",
         no_game: "Нет игры",
+        analysis_failed: "Ошибка, повторите",
         not_loaded: "Движок спит",
         reset: "Сброс",
         settings: "Настройки",
@@ -110,6 +111,7 @@ const TRANSLATIONS = {
         hint: "Show hint",
         analyzing: "Analyzing",
         no_game: "No game",
+        analysis_failed: "Failed, retry",
         not_loaded: "Engine asleep",
         reset: "Reset",
         settings: "Settings",
@@ -1089,27 +1091,57 @@ function bindEvents() {
         icon.textContent = '…'; 
         txt.textContent = t('analyzing');
         $('ch-hint-btn').disabled = true;
-        
-        const fen  = eng.getFEN();
-        const move = fen ? await eng.hint(fen) : null;
-        
+
+        const fen = eng.getFEN();
+
+        // No board / no readable position -> genuinely "no game".
+        if (!fen) {
+            $('ch-hint-btn').disabled = false;
+            txt.textContent = t('no_game');
+            icon.textContent = '⚠';
+            if (hintTimeout) clearTimeout(hintTimeout);
+            hintTimeout = setTimeout(() => {
+                icon.textContent = '⬡';
+                txt.textContent = t('hint');
+            }, 2500);
+            return;
+        }
+
+        let hintResult = null;
+        try {
+            hintResult = await eng.hint(fen);
+        } catch (err) {
+            console.error('[ch:ui] hint failed:', err);
+            hintResult = null;
+        }
+
         $('ch-hint-btn').disabled = false;
-        
+
+        // eng.hint may return a plain move string (legacy) or an object that
+        // distinguishes "engine failed to analyze" from "no move available".
+        const move = typeof hintResult === 'string'
+            ? hintResult
+            : (hintResult && hintResult.best) || null;
+        const failed = hintResult && typeof hintResult === 'object' && hintResult.error;
+
         if (move) {
             if (appConfig.rageMode && appConfig.bulletMode) {
                 window.chessHelperEngine?.playInstant(move);
-                txt.textContent = `${t('hint')}: ${move.toUpperCase()}`;
-                icon.textContent = '✓';
             } else {
                 drawArrow(move);
-                txt.textContent = `${t('hint')}: ${move.toUpperCase()}`;
-                icon.textContent = '✓';
             }
+            txt.textContent = `${t('hint')}: ${move.toUpperCase()}`;
+            icon.textContent = '✓';
+        } else if (failed) {
+            // We had a position but Stockfish timed out / errored. Tell the user
+            // to retry instead of falsely claiming they aren't in a game.
+            txt.textContent = t('analysis_failed');
+            icon.textContent = '⚠';
         } else {
             txt.textContent = t('no_game');
             icon.textContent = '⚠';
         }
-        
+
         if (hintTimeout) clearTimeout(hintTimeout);
         hintTimeout = setTimeout(() => { 
             icon.textContent = '⬡'; 

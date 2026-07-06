@@ -461,13 +461,26 @@ window.chessHelperIntervals = {
         }, 10000);
 
         const startTime = performance.now();
-        chrome.runtime.sendMessage({
-            target: 'background',
-            type: 'ANALYZE',
-            fen,
-            depth,
-            requestId
-        });
+        try {
+            chrome.runtime.sendMessage({
+                target: 'background',
+                type: 'ANALYZE',
+                fen,
+                depth,
+                requestId
+            });
+        } catch (e) {
+            // Messaging can throw synchronously (e.g. "Extension context
+            // invalidated" after an update/reload). Without this guard the
+            // awaited promise below would hang until the safety timeout, leaving
+            // the "Analyzing" spinner stuck. Resolve immediately as an error.
+            clearTimeout(safetyTimeout);
+            if (pendingAnalyses.has(requestId)) pendingAnalyses.delete(requestId);
+            return {
+                result: { error: true, eval: 0, mate: null, best: null },
+                searchTime: Math.round(performance.now() - startTime)
+            };
+        }
 
         const result = await promise;
         clearTimeout(safetyTimeout);
@@ -1039,7 +1052,13 @@ window.chessHelperIntervals = {
                 currentDepth = clamp(cfg.depth + rndInt(-2, 2), 3, 10);
             }
             const a = await analyze(fen, currentDepth);
-            return a.best;
+            // Return a structured result so the UI can distinguish an engine
+            // failure/timeout from a genuine "no game". Callers reading `.best`
+            // still work.
+            if (a && a.best && !a.error) {
+                return { best: a.best, eval: a.eval, mate: a.mate, error: false };
+            }
+            return { best: null, error: true };
         },
 
         setElo(elo) {

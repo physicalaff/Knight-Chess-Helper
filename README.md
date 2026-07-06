@@ -1,6 +1,6 @@
 <div align="center">
 
-<img width="1200" height="630" alt="Knight Chess Helper" src="https://github.com/user-attachments/assets/f6ad8097-d39d-4ac0-a072-66a98ddba759" />
+<img width="160" height="160" alt="Knight Chess Helper" src="https://github.com/user-attachments/assets/e255d1fa-0f43-4916-b27f-c23167f97d2d" />
 
 # ♞ Knight Chess Helper
 
