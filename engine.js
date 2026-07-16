@@ -267,6 +267,43 @@ window.chessHelperIntervals = {
         return 'w';
     }
 
+    // Derive the en-passant target square for the fallback FEN builder.
+    // Compares the current board grid with the most-recently-saved FEN to detect
+    // a pawn that just advanced two squares. Returns the ep target ("-" if none).
+    function deriveEnPassant(grid, activeCol) {
+        try {
+            const history = window.chessHelperGameFENs;
+            if (!history || history.length < 2) return '-';
+            // The second-to-last entry is the position BEFORE the opponent moved.
+            const prevFen = history[history.length - 2];
+            const prevRows = prevFen.split(' ')[0].split('/');
+            const prev = Array(8).fill(null).map(() => Array(8).fill(null));
+            for (let r = 0; r < 8; r++) {
+                let c = 0;
+                for (const ch of (prevRows[r] || '')) {
+                    if (/\d/.test(ch)) c += parseInt(ch);
+                    else prev[r][c++] = ch;
+                }
+            }
+            if (activeCol === 'w') {
+                // Black just moved — check for black pawn rank 7→5 (grid rows 1→3).
+                for (let c = 0; c < 8; c++) {
+                    if (prev[1][c] === 'p' && !grid[1][c] && grid[3][c] === 'p') {
+                        return 'abcdefgh'[c] + '6';
+                    }
+                }
+            } else {
+                // White just moved — check for white pawn rank 2→4 (grid rows 6→4).
+                for (let c = 0; c < 8; c++) {
+                    if (prev[6][c] === 'P' && !grid[6][c] && grid[4][c] === 'P') {
+                        return 'abcdefgh'[c] + '3';
+                    }
+                }
+            }
+        } catch (_) {}
+        return '-';
+    }
+
     function getFENFromController() {
         const b = board();
         if (!b) return null;
@@ -342,7 +379,9 @@ window.chessHelperIntervals = {
         }
         if (!castling) castling = '-';
 
-        return rows.join('/') + ` ${activeColor()} ${castling} - 0 1`;
+        const ac = activeColor();
+        const enPassant = deriveEnPassant(grid, ac);
+        return rows.join('/') + ` ${ac} ${castling} ${enPassant} 0 1`;
     }
 
     function squareRect(sq) {
@@ -609,20 +648,24 @@ window.chessHelperIntervals = {
     async function pickMove(fen, main) {
         if (cfg.bulletMode) return main.best;
         const r = Math.random();
-        
+
         if (r < cfg.blunders) {
+            // Blunder path: use a very shallow search. Do NOT fall through to
+            // the mistake branch on analysis failure — return main.best instead
+            // so a failed analysis doesn't silently produce a "mistake" move.
             state.justBlundered = true;
             const w = await analyze(fen, 2);
-            if (w.best) return w.best;
-        } else {
-            state.justBlundered = false;
+            return (w && w.best) ? w.best : main.best;
         }
-        
+
+        // Always reset justBlundered when we're outside the blunder range.
+        state.justBlundered = false;
+
         if (r < cfg.blunders + cfg.mistakes) {
             const w = await analyze(fen, 3);
-            if (w.best) return w.best;
+            if (w && w.best) return w.best;
         }
-        
+
         return main.best;
     }
 
@@ -633,9 +676,19 @@ window.chessHelperIntervals = {
             .filter(p => {
                 const s = Array.from(p.classList).find(c => c.startsWith('square-'));
                 if (!s) return false;
-                const n = s.split('-')[1];
-                return `${NUM_FILE[parseInt(n[0])]}${n[1]}` !== skip;
+                // chess.com uses both "square-XY" and "square-X-Y" notation.
+                const parts = s.split('-');
+                let sq;
+                if (parts.length === 3) {
+                    // "square-X-Y" → file = parts[1], rank = parts[2]
+                    sq = `${NUM_FILE[parseInt(parts[1])]}${parts[2]}`;
+                } else {
+                    // "square-XY" → packed two-digit string
+                    sq = `${NUM_FILE[parseInt(parts[1][0])]}${parts[1][1]}`;
+                }
+                return sq !== skip;
             });
+        if (!pool.length) return;
         const r  = pool[Math.floor(Math.random() * pool.length)].getBoundingClientRect();
         if (!r.width) return;
         const wx = r.left + r.width/2, wy = r.top + r.height/2;
@@ -665,6 +718,10 @@ window.chessHelperIntervals = {
         const fr = squareRect(from), tr = squareRect(to);
         if (!fr || !tr) return false;
 
+        // Capture flag must be sampled BEFORE the move so the opponent's piece
+        // is still visible on the destination square.
+        const wasCapture = oppPieceAt(to);
+
         if (instant || cfg.bulletMode) {
             const elFrom = document.elementFromPoint(fr.centerX, fr.centerY) || b;
             const elTo = document.elementFromPoint(tr.centerX, tr.centerY) || b;
@@ -682,8 +739,8 @@ window.chessHelperIntervals = {
                 const files = ['a','b','c','d','e','f','g','h'];
                 const currentFileIdx = files.indexOf(from[0]);
                 const currentRank = parseInt(from[1]);
-                const targetFile = files[clamp(currentFileIdx + rndInt(-1, 1), 0, 7)];
-                const targetRank = clamp(currentRank + rndInt(-1, 1), 1, 8);
+                const targetFile = files[clamp(currentFileIdx + rndInt(-1, 2), 0, 7)];
+                const targetRank = clamp(currentRank + rndInt(-1, 2), 1, 8);
                 const wrongSq = `${targetFile}${targetRank}`;
                 
                 if (wrongSq !== from) {
@@ -718,7 +775,7 @@ window.chessHelperIntervals = {
 
         state.moves++;
         state.halfMoves++;
-        state.lastWasCapture = oppPieceAt(to);
+        state.lastWasCapture = wasCapture; // sampled before the move (see above)
         state.lastMove = move;
 
         try {

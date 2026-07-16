@@ -377,7 +377,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             type: 'ANALYSIS_RESULT',
             requestId: message.requestId,
             data: message.data
-        });
+        }).catch(() => {}); // tab may have been closed before the result arrived
     }
 });
 

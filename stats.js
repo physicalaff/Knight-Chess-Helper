@@ -61,13 +61,9 @@ window.chessHelperStats = {
             }
 
             await chrome.storage.local.set({ appConfig: cfg });
-
-            if (window.appConfig) {
-                window.appConfig.elo = cfg.elo;
-                window.appConfig.games = cfg.games;
-                window.appConfig.wins = cfg.wins;
-                window.appConfig.gameHistory = cfg.gameHistory;
-            }
+            // Note: the UI's local `appConfig` object is synced back by
+            // onGameOverDetected (ui.js) after this function returns, so no
+            // in-memory patching is needed here.
         } catch (e) {
             console.error('[ch:stats] Failed to save game outcome:', e);
         }

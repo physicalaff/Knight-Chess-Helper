@@ -420,8 +420,31 @@ function setupHTML() {
     `.trim();
 }
 
+function svgGear() {
+    // Inline SVG gear icon — purple/lavender gradient with soft glow, matching
+    // the extension's accent colour. Using inline markup lets it inherit theme
+    // colours correctly without an extra network request or a PNG artefact.
+    return `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+        style="width:16px;height:16px;display:block;flex-shrink:0;">
+      <defs>
+        <linearGradient id="kgear-grad" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+          <stop offset="0%"   stop-color="#7C84F2"/>
+          <stop offset="100%" stop-color="#a78bfa"/>
+        </linearGradient>
+        <filter id="kgear-glow" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="0.55" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <g filter="url(#kgear-glow)" stroke="url(#kgear-grad)" stroke-width="1.8"
+         stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </g>
+    </svg>`;
+}
+
 function panelHTML() {
-    const gearIconUrl = chrome.runtime.getURL('assets/gear.png');
     const githubIconUrl = chrome.runtime.getURL('assets/github.png');
     
     const isSfActive = appConfig.sfMode && appConfig.rageMode;
@@ -671,7 +694,7 @@ function panelHTML() {
     <div id="ch-header">
         <div id="ch-brand">
             <span id="ch-logo" style="display:flex;align-items:center;">
-                <img src="${gearIconUrl}" style="width:16px;height:16px;display:block;" />
+                ${svgGear()}
             </span>
             <div>
                 <div id="ch-title" style="margin-left:8px;">${t('settings')}</div>
@@ -1204,6 +1227,51 @@ function bindEvents() {
                 b: { brilliant: 0, best: 0, excellent: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0 }
             };
 
+            // Helper: decode FEN piece placement into an 8×8 grid.
+            function parseFenToGrid(fen) {
+                const rows = fen.split(' ')[0].split('/');
+                const grid = Array(8).fill(null).map(() => Array(8).fill(null));
+                for (let r = 0; r < 8; r++) {
+                    let c = 0;
+                    for (const ch of (rows[r] || '')) {
+                        if (/\d/.test(ch)) c += parseInt(ch);
+                        else grid[r][c++] = ch;
+                    }
+                }
+                return grid;
+            }
+
+            // Helper: derive the UCI move string (e.g. "e2e4", "e7e8q") by
+            // comparing two consecutive FEN positions. Returns null on failure.
+            function deriveMoveFromFens(fenBefore, fenAfter) {
+                try {
+                    const activePrev = fenBefore.split(' ')[1] || 'w';
+                    const before = parseFenToGrid(fenBefore);
+                    const after  = parseFenToGrid(fenAfter);
+                    const isWhite = activePrev === 'w';
+                    const lost = [], gained = [];
+                    for (let r = 0; r < 8; r++) {
+                        for (let c = 0; c < 8; c++) {
+                            if (before[r][c] !== after[r][c]) {
+                                const sq = 'abcdefgh'[c] + String(8 - r);
+                                if (before[r][c]) lost.push({ sq, piece: before[r][c] });
+                                if (after[r][c])  gained.push({ sq, piece: after[r][c] });
+                            }
+                        }
+                    }
+                    const myPieces = isWhite ? 'PNBRQK' : 'pnbrqk';
+                    const from = lost.find(d => myPieces.includes(d.piece));
+                    const to   = gained.find(a =>
+                        isWhite ? a.piece === a.piece.toUpperCase()
+                                : a.piece === a.piece.toLowerCase());
+                    if (!from || !to) return null;
+                    // Promotion: pawn reaches last rank and changes type.
+                    const promo = (from.piece.toLowerCase() === 'p' && to.piece.toLowerCase() !== 'p')
+                        ? to.piece.toLowerCase() : '';
+                    return from.sq + to.sq + promo;
+                } catch (_) { return null; }
+            }
+
             const total = fens.length;
             let prevEval = 0.3; 
 
@@ -1265,7 +1333,12 @@ function bindEvents() {
 
                     const moveNum = Math.floor((i - 1) / 2) + 1;
                     const prefix = prevActiveCol === 'w' ? `${moveNum}. ` : `${moveNum}... `;
-                    const notation = analysis.best ? analysis.best.toUpperCase() : '??';
+                    // Derive the actual move played between the two positions;
+                    // fall back to the engine's suggestion only if derivation fails.
+                    const actualMove = deriveMoveFromFens(fens[i - 1], fens[i]);
+                    const notation = actualMove
+                        ? actualMove.toUpperCase()
+                        : (analysis.best ? analysis.best.toUpperCase() : '??');
 
                     movesAnalysis.push({
                         notation: prefix + notation,
@@ -1674,7 +1747,11 @@ async function loadSettingsView() {
         const blob = new Blob([str], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = el('a', { href: url, download: 'knight_config.json' });
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
+        // Revoke the object URL to avoid a memory leak.
+        setTimeout(() => URL.revokeObjectURL(url), 100);
     };
 
     $('btn-import').onclick = () => {
@@ -1989,7 +2066,7 @@ function clickElement(el) {
     }
 }
 
-function onGameOverDetected(detail) {
+async function onGameOverDetected(detail) {
     try {
         console.log('[ch:ui] onGameOverDetected triggered:', detail);
         const modalText = String(detail?.modalText || '').toLowerCase();
@@ -2363,13 +2440,27 @@ function onGameOverDetected(detail) {
         }
 
         console.log(`[ch:ui] Game Outcome Resolved: ${outcome}, ELO Change: ${eloChange}, Final ELO: ${finalElo}`);
-        window.chessHelperStats?.addGame(outcome, eloChange, finalElo);
+        // addGame is async — await it so the storage write finishes before we
+        // try to re-render the history. (The function never throws; errors are
+        // caught internally.)
+        await window.chessHelperStats?.addGame(outcome, eloChange, finalElo);
+        // Sync the updated game history back into the local appConfig object so
+        // renderHistory() sees the new entry without a page reload.
+        try {
+            const fresh = await chrome.storage.local.get(['appConfig']);
+            if (fresh.appConfig) {
+                appConfig.games       = fresh.appConfig.games       ?? appConfig.games;
+                appConfig.wins        = fresh.appConfig.wins        ?? appConfig.wins;
+                appConfig.elo         = fresh.appConfig.elo         ?? appConfig.elo;
+                appConfig.gameHistory = fresh.appConfig.gameHistory ?? appConfig.gameHistory;
+            }
+        } catch (_) {}
     } catch (e) {
         console.error('[ch:ui] Error during game over processing:', e);
     } finally {
         moveLog.length = 0;
         renderLog();
-        setTimeout(renderHistory, 250);
+        renderHistory(); // safe to call directly — addGame is already awaited above
         window.chessHelperEngine?.reset();
         if (appConfig.autoNewGame) {
             triggerAutoNewGame();
